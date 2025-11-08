@@ -85,6 +85,10 @@ const ModeSelectorDialog = ({
                         ? "bg-primary/20"
                         : mode.color === "magenta"
                         ? "bg-secondary/20"
+                        : mode.color === "pink"
+                        ? "bg-pink-500/20"
+                        : mode.color === "teal"
+                        ? "bg-teal-500/20"
                         : "bg-accent/20"
                     }`}
                   >
@@ -94,6 +98,10 @@ const ModeSelectorDialog = ({
                           ? "text-primary"
                           : mode.color === "magenta"
                           ? "text-secondary"
+                          : mode.color === "pink"
+                          ? "text-pink-500"
+                          : mode.color === "teal"
+                          ? "text-teal-500"
                           : "text-accent"
                       }`}
                     />

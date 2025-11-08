@@ -40,9 +40,9 @@ const EqualizerControls = ({ labels, values, onChange }: EqualizerControlsProps)
 
     const width = rect.width;
     const height = rect.height;
-    const padding = 60;
+    const padding = 80;
     const topPadding = 40;
-    const bottomPadding = 60;
+    const bottomPadding = 80;
     const drawHeight = height - topPadding - bottomPadding;
 
     // Clear canvas
@@ -61,10 +61,13 @@ const EqualizerControls = ({ labels, values, onChange }: EqualizerControlsProps)
       ctx.stroke();
     }
 
-    // Vertical grid lines (frequencies)
-    const spacing = (width - padding * 2) / (labels.length - 1);
+    // Vertical grid lines (frequencies) - spanning full grid width
+    const availableWidth = width - padding * 2;
+    const spacing = availableWidth / (labels.length - 1); // Evenly distribute across full width
+    const startX = padding; // Start at left edge of grid
+    
     for (let i = 0; i < labels.length; i++) {
-      const x = padding + i * spacing;
+      const x = startX + i * spacing;
       ctx.beginPath();
       ctx.moveTo(x, topPadding);
       ctx.lineTo(x, height - bottomPadding);
@@ -86,7 +89,7 @@ const EqualizerControls = ({ labels, values, onChange }: EqualizerControlsProps)
     // Calculate curve points
     const points: { x: number; y: number }[] = [];
     for (let i = 0; i < values.length; i++) {
-      const x = padding + i * spacing;
+      const x = startX + i * spacing;
       const normalizedValue = (2 - values[i]) / 2; // Invert: 2 -> 0, 0 -> 1
       const y = topPadding + normalizedValue * drawHeight;
       points.push({ x, y });
@@ -172,7 +175,7 @@ const EqualizerControls = ({ labels, values, onChange }: EqualizerControlsProps)
     ctx.textBaseline = "top";
 
     labels.forEach((label, index) => {
-      const x = padding + index * spacing;
+      const x = startX + index * spacing;
       ctx.fillText(label, x, height - bottomPadding + 10);
       
       // Show gain value
@@ -192,15 +195,17 @@ const EqualizerControls = ({ labels, values, onChange }: EqualizerControlsProps)
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    const padding = 60;
-    const spacing = (rect.width - padding * 2) / (labels.length - 1);
+    const padding = 80;
+    const availableWidth = rect.width - padding * 2;
+    const spacing = availableWidth / (labels.length - 1);
+    const startX = padding;
 
     // Find closest point
     let closestIndex = -1;
     let minDistance = Infinity;
 
     values.forEach((_, index) => {
-      const pointX = padding + index * spacing;
+      const pointX = startX + index * spacing;
       const distance = Math.abs(x - pointX);
 
       if (distance < 20 && distance < minDistance) {
@@ -222,11 +227,13 @@ const EqualizerControls = ({ labels, values, onChange }: EqualizerControlsProps)
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    const padding = 60;
+    const padding = 80;
     const topPadding = 40;
-    const bottomPadding = 60;
+    const bottomPadding = 80;
     const drawHeight = rect.height - topPadding - bottomPadding;
-    const spacing = (rect.width - padding * 2) / (labels.length - 1);
+    const availableWidth = rect.width - padding * 2;
+    const spacing = availableWidth / (labels.length - 1);
+    const startX = padding;
 
     if (draggingIndex !== null) {
       // Update value based on y position
@@ -239,7 +246,7 @@ const EqualizerControls = ({ labels, values, onChange }: EqualizerControlsProps)
       let minDistance = Infinity;
 
       values.forEach((_, index) => {
-        const pointX = padding + index * spacing;
+        const pointX = startX + index * spacing;
         const distance = Math.abs(x - pointX);
 
         if (distance < 20 && distance < minDistance) {
@@ -277,7 +284,7 @@ const EqualizerControls = ({ labels, values, onChange }: EqualizerControlsProps)
       <div className="relative">
         <canvas
           ref={canvasRef}
-          className="w-full h-[400px] cursor-pointer"
+          className="w-full h-[500px] cursor-pointer"
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
