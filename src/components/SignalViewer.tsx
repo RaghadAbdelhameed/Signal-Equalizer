@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 interface SignalViewerProps {
   title: string;
   data: Float32Array | null;
-  color: "cyan" | "magenta";
+  color: string;
   zoom?: number;
   pan?: number;
   onZoomChange?: (zoom: number) => void;
@@ -60,15 +60,17 @@ const SignalViewer = ({
     }
 
     // Draw signal with zoom and pan
-    const colorMap = {
+    const colorMap: Record<string, string> = {
       cyan: "rgb(34, 211, 238)",
       magenta: "rgb(236, 72, 153)",
     };
 
-    ctx.strokeStyle = colorMap[color];
+    // Use color from map if available, otherwise treat as hex/rgb string
+    const strokeColor = colorMap[color] || color;
+    ctx.strokeStyle = strokeColor;
     ctx.lineWidth = 2;
     ctx.shadowBlur = 10;
-    ctx.shadowColor = colorMap[color];
+    ctx.shadowColor = strokeColor;
 
     ctx.beginPath();
     

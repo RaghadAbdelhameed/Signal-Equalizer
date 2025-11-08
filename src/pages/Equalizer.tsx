@@ -54,17 +54,14 @@ const Equalizer = () => {
   const [audioData, setAudioData] = useState<Float32Array | null>(null);
   const [outputData, setOutputData] = useState<Float32Array | null>(null);
   
-  // Frequency ranges for generic mode (min, max, gain) - widely spaced to allow adding many new ranges
-  const defaultRanges: FrequencyRange[] = [
-    { minFreq: 20, maxFreq: 150, gain: 1 },
-    { minFreq: 1000, maxFreq: 1500, gain: 1 },
-    { minFreq: 3000, maxFreq: 3500, gain: 1 },
-    { minFreq: 5000, maxFreq: 5500, gain: 1 },
-    { minFreq: 7000, maxFreq: 7500, gain: 1 },
-    { minFreq: 9000, maxFreq: 10000, gain: 1 },
-    { minFreq: 12000, maxFreq: 13000, gain: 1 },
-    { minFreq: 15500, maxFreq: 18000, gain: 1 },
-  ];
+  // Specific frequencies for generic mode (most commonly used)
+  const defaultFrequencies = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+  
+  const defaultRanges: FrequencyRange[] = defaultFrequencies.map(freq => ({
+    minFreq: freq,
+    maxFreq: freq,
+    gain: 1
+  }));
   
   const [frequencyRanges, setFrequencyRanges] = useState<FrequencyRange[]>(defaultRanges);
   const [sliderValues, setSliderValues] = useState<number[]>(
@@ -148,7 +145,7 @@ const Equalizer = () => {
       default:
         return {
           title: "Generic Mode",
-          sliders: frequencyRanges.map(r => `${formatFrequency(r.minFreq)}-${formatFrequency(r.maxFreq)}`),
+          sliders: frequencyRanges.map(r => formatFrequency(r.minFreq)),
           isGeneric: true,
           isAI: false,
         };
@@ -364,26 +361,6 @@ const Equalizer = () => {
                 <Settings className="h-4 w-4 mr-2" />
                 Change Mode
               </Button>
-              {config.isGeneric && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowAddFrequency(true)}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Range
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowPresetManager(true)}
-                  >
-                    <Save className="h-4 w-4 mr-2" />
-                    Presets
-                  </Button>
-                </>
-              )}
               <Button variant="outline" size="sm" onClick={() => document.getElementById('audio-upload')?.click()}>
                 <Upload className="h-4 w-4 mr-2" />
                 Upload
@@ -406,6 +383,90 @@ const Equalizer = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6 space-y-6">
+        {/* Equalizer Controls or AI Separation with Tabs for music/voices */}
+        {(mode === "music" || mode === "voices") ? (
+          <Card className="p-6 bg-card border-border">
+            <Tabs value={subMode} onValueChange={(v) => setSubMode(v as "equalizer" | "ai")}>
+              <TabsList className="grid w-full grid-cols-2 mb-6">
+                <TabsTrigger value="equalizer">Equalizer Mode</TabsTrigger>
+                <TabsTrigger value="ai">AI Separation</TabsTrigger>
+              </TabsList>
+              <TabsContent value="equalizer">
+                <EqualizerControls
+                  labels={config.sliders}
+                  values={sliderValues}
+                  onChange={handleSliderChange}
+                />
+              </TabsContent>
+              <TabsContent value="ai">
+                {mode === "music" ? (
+                  <AudioSourceSeparation
+                    mode="musical"
+                    sources={musicalSources}
+                    onVolumeChange={handleMusicalVolumeChange}
+                    onMuteToggle={handleMusicalMuteToggle}
+                    audioData={outputData}
+                  />
+                ) : (
+                  <AudioSourceSeparation
+                    mode="human"
+                    sources={humanSources}
+                    onVolumeChange={handleHumanVolumeChange}
+                    onMuteToggle={handleHumanMuteToggle}
+                    audioData={outputData}
+                  />
+                )}
+              </TabsContent>
+            </Tabs>
+          </Card>
+        ) : config.isGeneric ? (
+          <Card className="p-6 bg-card border-border">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Equalizer Controls</h3>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleReset}
+                  className="text-xs"
+                >
+                  <RotateCcw className="h-3 w-3 mr-1.5" />
+                  Reset
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAddFrequency(true)}
+                  className="text-xs"
+                >
+                  <Plus className="h-3 w-3 mr-1.5" />
+                  Add Frequency
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowPresetManager(true)}
+                  className="text-xs"
+                >
+                  <Save className="h-3 w-3 mr-1.5" />
+                  Presets
+                </Button>
+              </div>
+            </div>
+            <EqualizerControls
+              labels={config.sliders}
+              values={sliderValues}
+              onChange={handleSliderChange}
+            />
+          </Card>
+        ) : (
+          <EqualizerControls
+            labels={config.sliders}
+            values={sliderValues}
+            onChange={handleSliderChange}
+          />
+        )}
+
         {/* Signal Viewers */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <SignalViewer
@@ -429,84 +490,60 @@ const Equalizer = () => {
         </div>
 
         {/* Playback Controls */}
-        <Card className="p-6 bg-card border-border">
-          <h3 className="text-lg font-semibold mb-4">Playback & View Controls</h3>
-          <div className="space-y-4">
-            {/* Playback Controls Row */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={handleReset}
-                  className="hover:bg-primary/10"
-                  title="Reset all settings"
-                >
-                  <RotateCcw className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={handlePlayPause}
-                  className="hover:bg-primary/10"
-                  title={isPlaying ? "Pause" : "Play"}
-                >
-                  {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
-                </Button>
-              </div>
-
-              <div className="flex items-center gap-3 flex-1 max-w-sm">
-                <Label className="text-sm font-medium min-w-[80px]">Speed: {playbackSpeed.toFixed(1)}x</Label>
-                <Slider
-                  value={[playbackSpeed]}
-                  onValueChange={handlePlaybackSpeedChange}
-                  min={0.5}
-                  max={2}
-                  step={0.1}
-                  className="flex-1"
-                />
-              </div>
+        <Card className="p-4 bg-card/50 backdrop-blur-sm border-border/50">
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Playback Controls */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handlePlayPause}
+                className="h-10 w-10 rounded-full hover:bg-primary/10"
+              >
+                {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
+              </Button>
             </div>
 
-            {/* Zoom/Pan Controls Row */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={handleZoomOut}
-                  className="hover:bg-primary/10"
-                  title="Zoom Out"
-                  disabled={zoom <= 1}
-                >
-                  <ZoomOut className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={handleZoomIn}
-                  className="hover:bg-primary/10"
-                  title="Zoom In"
-                  disabled={zoom >= 20}
-                >
-                  <ZoomIn className="h-4 w-4" />
-                </Button>
-              </div>
+            {/* Speed Control */}
+            <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">{playbackSpeed.toFixed(1)}x</span>
+              <Slider
+                value={[playbackSpeed]}
+                onValueChange={handlePlaybackSpeedChange}
+                min={0.5}
+                max={2}
+                step={0.1}
+                className="flex-1"
+              />
+            </div>
 
-              <div className="flex items-center gap-3 flex-1 max-w-sm">
-                <Label className="text-sm font-medium min-w-[80px]">Zoom: {zoom.toFixed(1)}x</Label>
-                <Slider
-                  value={[zoom]}
-                  onValueChange={(v) => setZoom(v[0])}
-                  min={1}
-                  max={20}
-                  step={0.1}
-                  className="flex-1"
-                />
-              </div>
+            {/* Zoom Control */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleZoomOut}
+                className="h-8 w-8 rounded-full hover:bg-primary/10"
+                disabled={zoom <= 1}
+              >
+                <ZoomOut className="h-4 w-4" />
+              </Button>
+              <span className="text-xs text-muted-foreground min-w-[40px] text-center">{zoom.toFixed(1)}x</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleZoomIn}
+                className="h-8 w-8 rounded-full hover:bg-primary/10"
+                disabled={zoom >= 20}
+              >
+                <ZoomIn className="h-4 w-4" />
+              </Button>
+            </div>
 
-              <div className="flex items-center gap-3 flex-1 max-w-sm">
-                <Label className="text-sm font-medium min-w-[80px]">Pan: {(pan * 100).toFixed(0)}%</Label>
+            {/* Pan Control */}
+            {zoom > 1 && (
+              <div className="flex items-center gap-2 flex-1 min-w-[150px]">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">Pan</span>
                 <Slider
                   value={[pan]}
                   onValueChange={(v) => setPan(v[0])}
@@ -514,74 +551,23 @@ const Equalizer = () => {
                   max={Math.max(0, 1 - 1/zoom)}
                   step={0.01}
                   className="flex-1"
-                  disabled={zoom <= 1}
                 />
               </div>
-            </div>
+            )}
 
-            {/* Options Row */}
-            <div className="flex items-center gap-6 pt-2 border-t border-border">
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={useAudiogramScale}
-                  onCheckedChange={setUseAudiogramScale}
-                  id="audiogram-scale"
-                />
-                <Label htmlFor="audiogram-scale" className="text-sm cursor-pointer">Audiogram Scale</Label>
-              </div>
+            {/* Options */}
+            <div className="flex items-center gap-4 ml-auto">
               <div className="flex items-center gap-2">
                 <Switch
                   checked={showSpectrograms}
                   onCheckedChange={setShowSpectrograms}
                   id="show-spectrograms"
                 />
-                <Label htmlFor="show-spectrograms" className="text-sm cursor-pointer">Show Spectrograms</Label>
+                <Label htmlFor="show-spectrograms" className="text-xs cursor-pointer whitespace-nowrap">Spectrograms</Label>
               </div>
             </div>
           </div>
         </Card>
-
-        {/* Equalizer Controls or AI Separation with Tabs for music/voices */}
-        {(mode === "music" || mode === "voices") ? (
-          <Card className="p-6 bg-card border-border">
-            <Tabs value={subMode} onValueChange={(v) => setSubMode(v as "equalizer" | "ai")}>
-              <TabsList className="grid w-full grid-cols-2 mb-6">
-                <TabsTrigger value="equalizer">Equalizer Mode</TabsTrigger>
-                <TabsTrigger value="ai">AI Separation</TabsTrigger>
-              </TabsList>
-              <TabsContent value="equalizer">
-                <EqualizerControls
-                  labels={config.sliders}
-                  values={sliderValues}
-                  onChange={handleSliderChange}
-                />
-              </TabsContent>
-              <TabsContent value="ai">
-                {mode === "music" ? (
-                  <AudioSourceSeparation
-                    mode="musical"
-                    sources={musicalSources}
-                    onVolumeChange={handleMusicalVolumeChange}
-                    onMuteToggle={handleMusicalMuteToggle}
-                  />
-                ) : (
-                  <AudioSourceSeparation
-                    mode="human"
-                    sources={humanSources}
-                    onVolumeChange={handleHumanVolumeChange}
-                    onMuteToggle={handleHumanMuteToggle}
-                  />
-                )}
-              </TabsContent>
-            </Tabs>
-          </Card>
-        ) : (
-          <EqualizerControls
-            labels={config.sliders}
-            values={sliderValues}
-            onChange={handleSliderChange}
-          />
-        )}
 
         {/* Spectrograms */}
         {showSpectrograms && (

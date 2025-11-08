@@ -30,32 +30,46 @@ const AddFrequencyDialog = ({
       return;
     }
 
-    // Check for overlapping ranges
-    const overlaps = existingRanges.some(range => minFreq >= range.minFreq && minFreq <= range.maxFreq || maxFreq >= range.minFreq && maxFreq <= range.maxFreq || minFreq <= range.minFreq && maxFreq >= range.maxFreq);
-    if (overlaps) {
-      toast.error("This frequency range overlaps with an existing range");
+    const midpoint = Math.round((minFreq + maxFreq) / 2);
+
+    // Check if frequency already exists
+    const exists = existingRanges.some(range => range.minFreq === midpoint);
+    if (exists) {
+      toast.error(`Frequency ${midpoint}Hz already exists`);
       return;
     }
+    
     onAdd({
-      minFreq,
-      maxFreq,
+      minFreq: midpoint,
+      maxFreq: midpoint,
       gain
     });
     setMinFreq(100);
     setMaxFreq(500);
     setGain(1);
     onOpenChange(false);
-    toast.success(`Added frequency range ${minFreq}-${maxFreq}Hz`);
+    toast.success(`Added frequency ${midpoint}Hz`);
   };
+  const midpoint = Math.round((minFreq + maxFreq) / 2);
+  
   return <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Add Custom Frequency Range</DialogTitle>
+          <DialogTitle>Add Custom Frequency</DialogTitle>
           <DialogDescription>
-            Define a frequency range (20Hz - 20,000Hz) and set its gain scale (0 - 2)
+            Define a frequency range to calculate its midpoint (20Hz - 20,000Hz)
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-6 py-4">
+          <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
+            <p className="text-sm font-medium text-center">
+              Calculated Frequency: <span className="text-lg font-bold text-primary">{midpoint}Hz</span>
+            </p>
+            <p className="text-xs text-muted-foreground text-center mt-1">
+              Midpoint of {minFreq}Hz - {maxFreq}Hz
+            </p>
+          </div>
+          
           <div className="grid gap-3">
             <Label htmlFor="minFreq" className="text-sm font-medium">
               Minimum Frequency: {minFreq}Hz
@@ -75,8 +89,6 @@ const AddFrequencyDialog = ({
               Range: 21Hz - 20,000Hz
             </p>
           </div>
-          
-          
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

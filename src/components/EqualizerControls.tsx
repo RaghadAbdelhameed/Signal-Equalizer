@@ -269,29 +269,16 @@ const EqualizerControls = ({ labels, values, onChange }: EqualizerControlsProps)
   };
 
   return (
-    <Card className="p-6 bg-card border-border">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">Equalizer Controls</h3>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleReset}
-          className="text-xs"
-        >
-          Reset
-        </Button>
-      </div>
-      <div className="relative">
-        <canvas
-          ref={canvasRef}
-          className="w-full h-[500px] cursor-pointer"
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseLeave}
-        />
-      </div>
-    </Card>
+    <div className="relative">
+      <canvas
+        ref={canvasRef}
+        className="w-full h-[500px] cursor-pointer"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+      />
+    </div>
   );
 };
 
