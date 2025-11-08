@@ -327,6 +327,121 @@ const Equalizer = () => {
   const handleZoomIn = () => setZoom(Math.min(20, zoom * 1.5));
   const handleZoomOut = () => setZoom(Math.max(1, zoom / 1.5));
 
+  const handleExport = async () => {
+    if (!audioContextRef.current || !outputData) {
+      toast.error("No processed audio to export");
+      return;
+    }
+
+    try {
+      // Create a new offline audio context for export
+      const offlineContext = new OfflineAudioContext(
+        1,
+        outputData.length,
+        audioContextRef.current.sampleRate
+      );
+
+      // Create buffer with processed data
+      const buffer = offlineContext.createBuffer(
+        1,
+        outputData.length,
+        audioContextRef.current.sampleRate
+      );
+      buffer.getChannelData(0).set(outputData);
+
+      // Create source and connect it
+      const source = offlineContext.createBufferSource();
+      source.buffer = buffer;
+      source.connect(offlineContext.destination);
+      source.start();
+
+      // Render the audio
+      const renderedBuffer = await offlineContext.startRendering();
+
+      // Convert to WAV
+      const wav = audioBufferToWav(renderedBuffer);
+      const blob = new Blob([wav], { type: 'audio/wav' });
+
+      // Download
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `processed_${audioFile?.name || 'audio'}.wav`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success("Audio exported successfully");
+    } catch (error) {
+      console.error("Error exporting audio:", error);
+      toast.error("Failed to export audio");
+    }
+  };
+
+  const audioBufferToWav = (buffer: AudioBuffer): ArrayBuffer => {
+    const length = buffer.length * buffer.numberOfChannels * 2 + 44;
+    const arrayBuffer = new ArrayBuffer(length);
+    const view = new DataView(arrayBuffer);
+    const channels = [];
+    let offset = 0;
+    let pos = 0;
+
+    // Write WAV header
+    const setUint16 = (data: number) => {
+      view.setUint16(pos, data, true);
+      pos += 2;
+    };
+    const setUint32 = (data: number) => {
+      view.setUint32(pos, data, true);
+      pos += 4;
+    };
+
+    // RIFF identifier
+    setUint32(0x46464952);
+    // file length
+    setUint32(length - 8);
+    // RIFF type
+    setUint32(0x45564157);
+    // format chunk identifier
+    setUint32(0x20746d66);
+    // format chunk length
+    setUint32(16);
+    // sample format (raw)
+    setUint16(1);
+    // channel count
+    setUint16(buffer.numberOfChannels);
+    // sample rate
+    setUint32(buffer.sampleRate);
+    // byte rate
+    setUint32(buffer.sampleRate * 2 * buffer.numberOfChannels);
+    // block align
+    setUint16(buffer.numberOfChannels * 2);
+    // bits per sample
+    setUint16(16);
+    // data chunk identifier
+    setUint32(0x61746164);
+    // data chunk length
+    setUint32(length - pos - 4);
+
+    // Write interleaved data
+    for (let i = 0; i < buffer.numberOfChannels; i++) {
+      channels.push(buffer.getChannelData(i));
+    }
+
+    while (pos < length) {
+      for (let i = 0; i < buffer.numberOfChannels; i++) {
+        let sample = Math.max(-1, Math.min(1, channels[i][offset]));
+        sample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+        view.setInt16(pos, sample, true);
+        pos += 2;
+      }
+      offset++;
+    }
+
+    return arrayBuffer;
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -372,7 +487,7 @@ const Equalizer = () => {
                 className="hidden"
                 onChange={handleFileUpload}
               />
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={handleExport}>
                 <Download className="h-4 w-4 mr-2" />
                 Export
               </Button>
@@ -557,6 +672,14 @@ const Equalizer = () => {
 
             {/* Options */}
             <div className="flex items-center gap-4 ml-auto">
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={useAudiogramScale}
+                  onCheckedChange={setUseAudiogramScale}
+                  id="audiogram-scale"
+                />
+                <Label htmlFor="audiogram-scale" className="text-xs cursor-pointer whitespace-nowrap">Audiogram</Label>
+              </div>
               <div className="flex items-center gap-2">
                 <Switch
                   checked={showSpectrograms}
