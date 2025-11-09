@@ -442,6 +442,100 @@ const Equalizer = () => {
     return arrayBuffer;
   };
 
+  let mainControls;
+  if (mode === "music" || mode === "voices") {
+    mainControls = (
+      <Card className="p-6 bg-card border-border">
+        <Tabs value={subMode} onValueChange={(v) => setSubMode(v as "equalizer" | "ai")}>
+          <TabsList className="grid w-full grid-cols-2 mb-6">
+            <TabsTrigger value="equalizer">Equalizer Mode</TabsTrigger>
+            <TabsTrigger value="ai">AI Separation</TabsTrigger>
+          </TabsList>
+          <TabsContent value="equalizer">
+            <EqualizerControls
+              labels={config.sliders}
+              values={sliderValues}
+              onChange={handleSliderChange}
+            />
+          </TabsContent>
+          <TabsContent value="ai">
+            <AudioSourceSeparation
+              mode={mode === "music" ? "musical" : "human"}
+              sources={mode === "music" ? musicalSources : humanSources}
+              onVolumeChange={mode === "music" ? handleMusicalVolumeChange : handleHumanVolumeChange}
+              onMuteToggle={mode === "music" ? handleMusicalMuteToggle : handleHumanMuteToggle}
+              audioData={outputData}
+            />
+          </TabsContent>
+        </Tabs>
+      </Card>
+    );
+  } else if (config.isAI) {
+    mainControls = (
+      <Card className="p-6 bg-card border-border">
+        <AudioSourceSeparation
+          mode={mode === "ai-musical" ? "musical" : "human"}
+          sources={mode === "ai-musical" ? musicalSources : humanSources}
+          onVolumeChange={mode === "ai-musical" ? handleMusicalVolumeChange : handleHumanVolumeChange}
+          onMuteToggle={mode === "ai-musical" ? handleMusicalMuteToggle : handleHumanMuteToggle}
+          audioData={outputData}
+        />
+      </Card>
+    );
+  } else if (config.isGeneric) {
+    mainControls = (
+      <Card className="p-6 bg-card border-border">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Equalizer Controls</h3>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleReset}
+              className="text-xs"
+            >
+              <RotateCcw className="h-3 w-3 mr-1.5" />
+              Reset
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAddFrequency(true)}
+              className="text-xs"
+            >
+              <Plus className="h-3 w-3 mr-1.5" />
+              Add Frequency
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowPresetManager(true)}
+              className="text-xs"
+            >
+              <Save className="h-3 w-3 mr-1.5" />
+              Presets
+            </Button>
+          </div>
+        </div>
+        <EqualizerControls
+          labels={config.sliders}
+          values={sliderValues}
+          onChange={handleSliderChange}
+        />
+      </Card>
+    );
+  } else {
+    mainControls = (
+      <Card className="p-6 bg-card border-border">
+        <EqualizerControls
+          labels={config.sliders}
+          values={sliderValues}
+          onChange={handleSliderChange}
+        />
+      </Card>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -498,199 +592,117 @@ const Equalizer = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6 space-y-6">
-        {/* Equalizer Controls or AI Separation with Tabs for music/voices */}
-        {(mode === "music" || mode === "voices") ? (
-          <Card className="p-6 bg-card border-border">
-            <Tabs value={subMode} onValueChange={(v) => setSubMode(v as "equalizer" | "ai")}>
-              <TabsList className="grid w-full grid-cols-2 mb-6">
-                <TabsTrigger value="equalizer">Equalizer Mode</TabsTrigger>
-                <TabsTrigger value="ai">AI Separation</TabsTrigger>
-              </TabsList>
-              <TabsContent value="equalizer">
-                <EqualizerControls
-                  labels={config.sliders}
-                  values={sliderValues}
-                  onChange={handleSliderChange}
-                />
-              </TabsContent>
-              <TabsContent value="ai">
-                {mode === "music" ? (
-                  <AudioSourceSeparation
-                    mode="musical"
-                    sources={musicalSources}
-                    onVolumeChange={handleMusicalVolumeChange}
-                    onMuteToggle={handleMusicalMuteToggle}
-                    audioData={outputData}
-                  />
-                ) : (
-                  <AudioSourceSeparation
-                    mode="human"
-                    sources={humanSources}
-                    onVolumeChange={handleHumanVolumeChange}
-                    onMuteToggle={handleHumanMuteToggle}
-                    audioData={outputData}
-                  />
-                )}
-              </TabsContent>
-            </Tabs>
-          </Card>
-        ) : config.isGeneric ? (
-          <Card className="p-6 bg-card border-border">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Equalizer Controls</h3>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleReset}
-                  className="text-xs"
-                >
-                  <RotateCcw className="h-3 w-3 mr-1.5" />
-                  Reset
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowAddFrequency(true)}
-                  className="text-xs"
-                >
-                  <Plus className="h-3 w-3 mr-1.5" />
-                  Add Frequency
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowPresetManager(true)}
-                  className="text-xs"
-                >
-                  <Save className="h-3 w-3 mr-1.5" />
-                  Presets
-                </Button>
-              </div>
-            </div>
-            <EqualizerControls
-              labels={config.sliders}
-              values={sliderValues}
-              onChange={handleSliderChange}
-            />
-          </Card>
-        ) : (
-          <EqualizerControls
-            labels={config.sliders}
-            values={sliderValues}
-            onChange={handleSliderChange}
-          />
-        )}
-
-        {/* Signal Viewers */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <SignalViewer
-            title="Input Signal"
-            data={audioData}
-            color="cyan"
-            zoom={zoom}
-            pan={pan}
-            onZoomChange={setZoom}
-            onPanChange={setPan}
-          />
-          <SignalViewer
-            title="Output Signal"
-            data={outputData}
-            color="magenta"
-            zoom={zoom}
-            pan={pan}
-            onZoomChange={setZoom}
-            onPanChange={setPan}
-          />
-        </div>
-
-        {/* Playback Controls */}
-        <Card className="p-4 bg-card/50 backdrop-blur-sm border-border/50">
-          <div className="flex flex-wrap items-center gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {mainControls}
+          <div className="flex flex-col gap-4">
             {/* Playback Controls */}
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handlePlayPause}
-                className="h-10 w-10 rounded-full hover:bg-primary/10"
-              >
-                {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
-              </Button>
-            </div>
+            <Card className="p-4 bg-card/50 backdrop-blur-sm border-border/50">
+              <div className="flex flex-wrap items-center gap-4">
+                {/* Playback Controls */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handlePlayPause}
+                    className="h-10 w-10 rounded-full hover:bg-primary/10"
+                  >
+                    {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
+                  </Button>
+                </div>
 
-            {/* Speed Control */}
-            <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-              <span className="text-xs text-muted-foreground whitespace-nowrap">{playbackSpeed.toFixed(1)}x</span>
-              <Slider
-                value={[playbackSpeed]}
-                onValueChange={handlePlaybackSpeedChange}
-                min={0.5}
-                max={2}
-                step={0.1}
-                className="flex-1"
-              />
-            </div>
+                {/* Speed Control */}
+                <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">{playbackSpeed.toFixed(1)}x</span>
+                  <Slider
+                    value={[playbackSpeed]}
+                    onValueChange={handlePlaybackSpeedChange}
+                    min={0.5}
+                    max={2}
+                    step={0.1}
+                    className="flex-1"
+                  />
+                </div>
 
-            {/* Zoom Control */}
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleZoomOut}
-                className="h-8 w-8 rounded-full hover:bg-primary/10"
-                disabled={zoom <= 1}
-              >
-                <ZoomOut className="h-4 w-4" />
-              </Button>
-              <span className="text-xs text-muted-foreground min-w-[40px] text-center">{zoom.toFixed(1)}x</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleZoomIn}
-                className="h-8 w-8 rounded-full hover:bg-primary/10"
-                disabled={zoom >= 20}
-              >
-                <ZoomIn className="h-4 w-4" />
-              </Button>
-            </div>
+                {/* Zoom Control */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleZoomOut}
+                    className="h-8 w-8 rounded-full hover:bg-primary/10"
+                    disabled={zoom <= 1}
+                  >
+                    <ZoomOut className="h-4 w-4" />
+                  </Button>
+                  <span className="text-xs text-muted-foreground min-w-[40px] text-center">{zoom.toFixed(1)}x</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleZoomIn}
+                    className="h-8 w-8 rounded-full hover:bg-primary/10"
+                    disabled={zoom >= 20}
+                  >
+                    <ZoomIn className="h-4 w-4" />
+                  </Button>
+                </div>
 
-            {/* Pan Control */}
-            {zoom > 1 && (
-              <div className="flex items-center gap-2 flex-1 min-w-[150px]">
-                <span className="text-xs text-muted-foreground whitespace-nowrap">Pan</span>
-                <Slider
-                  value={[pan]}
-                  onValueChange={(v) => setPan(v[0])}
-                  min={0}
-                  max={Math.max(0, 1 - 1/zoom)}
-                  step={0.01}
-                  className="flex-1"
-                />
+                {/* Pan Control */}
+                {zoom > 1 && (
+                  <div className="flex items-center gap-2 flex-1 min-w-[150px]">
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">Pan</span>
+                    <Slider
+                      value={[pan]}
+                      onValueChange={(v) => setPan(v[0])}
+                      min={0}
+                      max={Math.max(0, 1 - 1/zoom)}
+                      step={0.01}
+                      className="flex-1"
+                    />
+                  </div>
+                )}
+
+                {/* Options */}
+                <div className="flex items-center gap-4 ml-auto">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={useAudiogramScale}
+                      onCheckedChange={setUseAudiogramScale}
+                      id="audiogram-scale"
+                    />
+                    <Label htmlFor="audiogram-scale" className="text-xs cursor-pointer whitespace-nowrap">Audiogram</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={showSpectrograms}
+                      onCheckedChange={setShowSpectrograms}
+                      id="show-spectrograms"
+                    />
+                    <Label htmlFor="show-spectrograms" className="text-xs cursor-pointer whitespace-nowrap">Spectrograms</Label>
+                  </div>
+                </div>
               </div>
-            )}
-
-            {/* Options */}
-            <div className="flex items-center gap-4 ml-auto">
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={useAudiogramScale}
-                  onCheckedChange={setUseAudiogramScale}
-                  id="audiogram-scale"
-                />
-                <Label htmlFor="audiogram-scale" className="text-xs cursor-pointer whitespace-nowrap">Audiogram</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={showSpectrograms}
-                  onCheckedChange={setShowSpectrograms}
-                  id="show-spectrograms"
-                />
-                <Label htmlFor="show-spectrograms" className="text-xs cursor-pointer whitespace-nowrap">Spectrograms</Label>
-              </div>
-            </div>
+            </Card>
+            {/* Signal Viewers */}
+            <SignalViewer
+              title="Input Signal"
+              data={audioData}
+              color="cyan"
+              zoom={zoom}
+              pan={pan}
+              onZoomChange={setZoom}
+              onPanChange={setPan}
+            />
+            <SignalViewer
+              title="Output Signal"
+              data={outputData}
+              color="magenta"
+              zoom={zoom}
+              pan={pan}
+              onZoomChange={setZoom}
+              onPanChange={setPan}
+            />
           </div>
-        </Card>
+        </div>
 
         {/* Spectrograms */}
         {showSpectrograms && (
