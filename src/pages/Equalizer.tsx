@@ -452,6 +452,29 @@ const Equalizer = () => {
             <TabsTrigger value="ai">AI Separation</TabsTrigger>
           </TabsList>
           <TabsContent value="equalizer">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Equalizer Controls</h3>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleReset}
+                  className="text-xs"
+                >
+                  <RotateCcw className="h-3 w-3 mr-1.5" />
+                  Reset
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowPresetManager(true)}
+                  className="text-xs"
+                >
+                  <Save className="h-3 w-3 mr-1.5" />
+                  Presets
+                </Button>
+              </div>
+            </div>
             <EqualizerControls
               labels={config.sliders}
               values={sliderValues}
@@ -527,6 +550,29 @@ const Equalizer = () => {
   } else {
     mainControls = (
       <Card className="p-6 bg-card border-border">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Equalizer Controls</h3>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleReset}
+              className="text-xs"
+            >
+              <RotateCcw className="h-3 w-3 mr-1.5" />
+              Reset
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowPresetManager(true)}
+              className="text-xs"
+            >
+              <Save className="h-3 w-3 mr-1.5" />
+              Presets
+            </Button>
+          </div>
+        </div>
         <EqualizerControls
           labels={config.sliders}
           values={sliderValues}
