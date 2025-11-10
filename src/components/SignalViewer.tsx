@@ -12,7 +12,6 @@ interface SignalViewerProps {
   pan?: number;
   onZoomChange?: (zoom: number) => void;
   onPanChange?: (pan: number) => void;
-  /** Custom render function (e.g. FFT, Spectrogram) */
   render?: (
     ctx: CanvasRenderingContext2D,
     width: number,
@@ -22,7 +21,6 @@ interface SignalViewerProps {
     pan: number,
     props: Record<string, any>
   ) => void;
-  /** Extra props: sampleRate, etc. */
   renderProps?: Record<string, any>;
 }
 
@@ -71,7 +69,6 @@ const SignalViewer = ({
       ctx.stroke();
     }
 
-    // Custom render (FFT, etc.)
     if (render) {
       render(ctx, width, height, data, zoom, pan, renderProps);
       return;
@@ -93,22 +90,21 @@ const SignalViewer = ({
 
     ctx.beginPath();
 
-    // Accurate visible sample range
-    const totalVisibleSamples = Math.floor(data.length / zoom);
-    const startSample = Math.floor(pan * (data.length - totalVisibleSamples));
-    const endSample = Math.min(data.length, startSample + totalVisibleSamples);
+    const totalSamples = data.length;
+    const visibleSamples = totalSamples / zoom;
+    const startSample = pan * (totalSamples - visibleSamples);
+    const endSample = startSample + visibleSamples;
 
-    const startIdx = Math.max(0, Math.min(data.length - 1, startSample));
-    const endIdx = Math.max(startIdx + 1, Math.min(data.length, endSample));
-    const samplesToDraw = endIdx - startIdx;
-    const pixelsPerSample = width / samplesToDraw;
+    const startIdx = Math.max(0, Math.floor(startSample));
+    const endIdx = Math.min(totalSamples, Math.ceil(endSample));
+    const pixelsPerSample = width / (endIdx - startIdx);
 
     // Draw waveform
     for (let i = 0; i < width; i++) {
-      const sampleIndex = startIdx + Math.floor(i / pixelsPerSample);
-      if (sampleIndex >= endIdx) break;
+      const sampleIdx = startIdx + Math.floor(i / pixelsPerSample);
+      if (sampleIdx >= endIdx) break;
 
-      const value = data[sampleIndex] || 0;
+      const value = data[sampleIdx] || 0;
       const y = (height / 2) * (1 - value);
 
       if (i === 0) ctx.moveTo(i, y);
@@ -138,29 +134,20 @@ const SignalViewer = ({
     }
   }, [data, color, zoom, pan, render, renderProps]);
 
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    if (!onZoomChange) return;
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Math.max(1, Math.min(100, zoom * delta));
-    onZoomChange(newZoom);
-  };
-
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true);
     setDragStart(e.clientX);
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || !onPanChange) return;
+    if (!isDragging || !onPanChange || zoom <= 1) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const deltaX = e.clientX - dragStart;
-    const deltaPan = deltaX / canvas.width / zoom;
-    const newPan = Math.max(0, Math.min(1 - 1 / zoom, pan + deltaPan));
-    onPanChange(newPan);
-    setDragStart(e.clientX);
+    const deltaPan = deltaX / canvasRef.current!.width;
+    const newPan = pan - deltaPan;
+    onPanChange(Math.max(0, Math.min(1 - 1 / zoom, newPan)));
   };
 
   const handleMouseUp = () => setIsDragging(false);
@@ -213,7 +200,6 @@ const SignalViewer = ({
           width={800}
           height={200}
           className="w-full h-auto"
-          onWheel={handleWheel}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}

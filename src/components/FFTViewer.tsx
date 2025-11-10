@@ -1,168 +1,246 @@
 // FFTViewer.tsx
-import React, { useEffect, useRef } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { fft } from "@/utils/fft"; // Import your existing FFT function
-import { constructComplexArray } from "@/utils/utils"; // Import your existing utility
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { ZoomIn, ZoomOut } from "lucide-react";
+import { fft } from "@/utils/fft";
+import { constructComplexArray } from "@/utils/utils";
 
 interface FFTViewerProps {
   title: string;
   color?: string;
   audioData?: Float32Array | null;
   sampleRate?: number;
+  zoom?: number;
+  pan?: number;
+  onZoomChange?: (zoom: number) => void;
+  onPanChange?: (pan: number) => void;
+  useAudiogramScale?: boolean;
+  onAudiogramChange?: (value: boolean) => void;
 }
 
-const FFTViewer: React.FC<FFTViewerProps> = ({ 
-  title, 
-  color = "cyan", 
+const FFTViewer: React.FC<FFTViewerProps> = ({
+  title,
+  color = "cyan",
   audioData,
-  sampleRate = 44100 
+  sampleRate = 44100,
+  zoom = 1,
+  pan = 0,
+  onZoomChange,
+  onPanChange,
+  useAudiogramScale = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, pan: 0 });
 
   useEffect(() => {
     if (!audioData || !canvasRef.current) return;
+    drawFFT();
+  }, [audioData, sampleRate, zoom, pan, useAudiogramScale]);
 
-    drawFFT(audioData, sampleRate);
-  }, [audioData, sampleRate]);
-
-  const drawFFT = (data: Float32Array, sampleRate: number) => {
+  const drawFFT = () => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
+    if (!canvas || !audioData) return;
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     const width = canvas.width;
     const height = canvas.height;
 
-    // Clear canvas
-    ctx.fillStyle = '#000011';
+    ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, width, height);
 
-    // Compute FFT using your existing fft function
-    const fftResult = computeFFT(data);
-    
-    if (!fftResult) {
-      console.log("No FFT result");
-      return;
+    const result = computeFFT(audioData, sampleRate);
+    if (!result) return;
+
+    let maxMag = 1;
+    for (let i = 1; i < result.magnitudes.length; i++) {
+      maxMag = Math.max(maxMag, result.magnitudes[i]);
     }
 
-    console.log("FFT Result:", fftResult.magnitudes.length, "points");
+    const nyquist = sampleRate / 2;
+    const visibleRange = nyquist / zoom;
+    const visibleStart = pan * (nyquist - visibleRange);
+    const visibleEnd = visibleStart + visibleRange;
 
-    // Draw FFT graph
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
+    const strokeColor = color === "cyan" ? "#22d3ee" : "#ec4899";
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 2;
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = strokeColor;
     ctx.beginPath();
 
-    const maxFreq = sampleRate / 2; // Nyquist frequency
-    const maxMagnitude = Math.max(...fftResult.magnitudes.filter(m => isFinite(m)));
-    
-    if (maxMagnitude <= 0) {
-      console.log("No valid magnitudes");
-      return;
-    }
+    const minFreq = 20;
+    const maxFreq = 20000;
 
-    console.log("Max magnitude:", maxMagnitude);
+    let first = true;
+    for (let i = 0; i < result.frequencies.length; i++) {
+      const f = result.frequencies[i];
+      if (f < visibleStart || f > visibleEnd) continue;
 
-    for (let i = 1; i < fftResult.frequencies.length; i++) {
-      const freq = fftResult.frequencies[i];
-      const magnitude = fftResult.magnitudes[i];
-      
-      if (!isFinite(freq) || !isFinite(magnitude)) continue;
-      
-      // Convert to logarithmic scale for better visualization
-      const x = (Math.log10(freq + 1) / Math.log10(maxFreq + 1)) * width;
-      const y = height - (magnitude / maxMagnitude) * height * 0.9;
+      const mag = result.magnitudes[i] / maxMag;
+      const y = height - (Math.sqrt(mag) * height * 0.94) - 6;
 
-      if (i === 1) {
-        ctx.moveTo(x, y);
+      let x: number;
+      if (useAudiogramScale) {
+        x = f <= minFreq ? 0 : f >= maxFreq ? width :
+          (Math.log10(f / minFreq) / Math.log10(maxFreq / minFreq)) * width;
       } else {
-        ctx.lineTo(x, y);
+        x = ((f - visibleStart) / visibleRange) * width;
       }
+
+      if (x < 0 || x > width) continue;
+      if (first) { ctx.moveTo(x, y); first = false; }
+      else ctx.lineTo(x, y);
     }
-
     ctx.stroke();
+    ctx.shadowBlur = 0;
 
-    // Draw grid and labels for debugging
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    // Grid + Labels
+    ctx.strokeStyle = "rgba(255,255,255,0.15)";
     ctx.lineWidth = 0.5;
-    
-    // Frequency markers
-    const freqMarkers = [100, 1000, 5000, 10000, 15000];
-    freqMarkers.forEach(freq => {
-      const x = (Math.log10(freq + 1) / Math.log10(maxFreq + 1)) * width;
+    ctx.fillStyle = "#cccccc";
+    ctx.font = "10px monospace";
+    ctx.textAlign = "center";
+
+    const labels = useAudiogramScale
+      ? [125, 250, 500, 1000, 2000, 4000, 8000]
+      : [2000, 4000, 8000, 12000, 16000, nyquist];
+
+    labels.forEach(f => {
+      if (f < visibleStart || f > visibleEnd) return;
+
+      const x = useAudiogramScale
+        ? (Math.log10(f / minFreq) / Math.log10(maxFreq / minFreq)) * width
+        : ((f - visibleStart) / visibleRange) * width;
+
+      if (x < 0 || x > width) return;
+
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, height);
       ctx.stroke();
-      
-      ctx.fillStyle = 'white';
-      ctx.font = '10px Arial';
-      ctx.fillText(freq >= 1000 ? `${freq/1000}k` : `${freq}`, x-10, height-5);
+
+      const label = f >= 1000 ? `${(f / 1000).toFixed(0)}k` : `${f}`;
+      ctx.fillText(label, x, height - 4);
     });
+
+    // Baseline
+    ctx.strokeStyle = "rgba(255,255,255,0.1)";
+    ctx.beginPath();
+    ctx.moveTo(0, height - 6);
+    ctx.lineTo(width, height - 6);
+    ctx.stroke();
   };
 
-  const computeFFT = (data: Float32Array) => {
+  const computeFFT = (data: Float32Array, sr: number) => {
     try {
-      console.log("Computing FFT for data length:", data.length);
-      
-      // FFT requires power-of-2 length, so find the nearest power of 2
-      const fftSize = Math.pow(2, Math.floor(Math.log2(data.length)));
-      console.log("Using FFT size:", fftSize);
-      
-      // Take a slice of the data that's power-of-2 length
-      const sliceData = data.slice(0, fftSize);
-      const dataArray = Array.from(sliceData);
-      
-      // Use your existing constructComplexArray function
-      const complexSignal = constructComplexArray(dataArray);
-      
-      // Use your existing fft function
-      const fftResult = fft(complexSignal);
-      
-      // Calculate frequencies and magnitudes
-      const frequencies: number[] = [];
-      const magnitudes: number[] = [];
+      const size = Math.pow(2, Math.floor(Math.log2(data.length)));
+      const slice = data.slice(0, size);
+      const complex = constructComplexArray(Array.from(slice));
+      const res = fft(complex);
 
-      // Only use first half (real signal FFT is symmetric)
-      for (let i = 0; i < Math.floor(fftSize / 2); i++) {
-        const freq = (i * sampleRate) / fftSize;
-        frequencies.push(freq);
-        
-        const real = fftResult.real[i];
-        const imag = fftResult.imag[i];
-        
-        // Calculate magnitude
-        const magnitude = Math.sqrt(real * real + imag * imag);
-        magnitudes.push(magnitude);
+      const freqs: number[] = [];
+      const mags: number[] = [];
+      for (let i = 0; i < size / 2; i++) {
+        freqs.push((i * sr) / size);
+        mags.push(Math.hypot(res.real[i], res.imag[i]));
       }
-
-      console.log("Computed FFT with", frequencies.length, "frequency bins");
-      return { frequencies, magnitudes };
-    } catch (error) {
-      console.error('FFT computation error:', error);
+      return { frequencies: freqs, magnitudes: mags };
+    } catch (e) {
+      console.error("FFT error:", e);
       return null;
     }
   };
 
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    setDragStart({ x: e.clientX, pan });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || !onPanChange || zoom <= 1) return;
+    const delta = (e.clientX - dragStart.x) / canvasRef.current!.width;
+    const newPan = Math.max(0, Math.min(1 - 1 / zoom, dragStart.pan - delta));
+    onPanChange(newPan);
+  };
+
+  const handleMouseUp = () => setIsDragging(false);
+
   return (
-    <Card className="p-4 bg-card border-border h-64 flex flex-col justify-between">
-      <div className="flex justify-between items-center mb-2">
-        <h3 className="text-base font-semibold">{title}</h3>
+    <Card className="p-4 bg-card border-border">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => onZoomChange?.(Math.max(1, zoom / 1.5))}
+              disabled={zoom <= 1}
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+            </Button>
+            <span className="text-xs text-muted-foreground min-w-[36px] text-center">
+              {zoom.toFixed(1)}x
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => onZoomChange?.(Math.min(50, zoom * 1.5))}
+            >
+              <ZoomIn className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
       </div>
 
-      <div className="flex-1 rounded-lg border border-border bg-muted/30 overflow-hidden relative">
+      {zoom > 1 && (
+        <div className="mb-3 flex items-center gap-2">
+          <span className="text-xs text-muted-foreground whitespace-nowrap">Pan</span>
+          <Slider
+            value={[pan]}
+            onValueChange={(v) => onPanChange?.(v[0])}
+            min={0}
+            max={Math.max(0, 1 - 1 / zoom)}
+            step={0.001}
+            className="flex-1"
+          />
+        </div>
+      )}
+
+      <div className="relative bg-black/50 rounded-lg overflow-hidden cursor-move select-none">
         <canvas
           ref={canvasRef}
-          width={500}
-          height={200}
-          className="w-full h-full"
+          width={900}
+          height={300}
+          className="w-full h-auto"
+          style={{ imageRendering: "crisp-edges" }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
         />
         {!audioData && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/80">
-            <p className="text-sm text-muted-foreground">No audio data</p>
+          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm">
+            No data loaded
           </div>
         )}
+
+        {/* X-Axis Label (Frequency) */}
+        <div className="flex justify-center mt-1">
+          <span className="text-xs text-muted-foreground font-medium">
+            Frequency (Hz)
+          </span>
+        </div>
+
+        
       </div>
     </Card>
   );

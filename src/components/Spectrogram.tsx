@@ -84,7 +84,7 @@ const Spectrogram = ({ title, data, color }: SpectrogramProps) => {
         />
         {!data && (
           <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm">
-            No signal data
+            No data loaded
           </div>
         )}
       </div>
