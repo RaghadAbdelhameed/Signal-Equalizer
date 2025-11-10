@@ -63,9 +63,11 @@ const FFTViewer: React.FC<FFTViewerProps> = ({
     }
 
     const nyquist = sampleRate / 2;
+    
+    // When audiogram scale is on, show full range (20Hz-20kHz) regardless of zoom/pan
     const visibleRange = nyquist / zoom;
-    const visibleStart = pan * (nyquist - visibleRange);
-    const visibleEnd = visibleStart + visibleRange;
+    const visibleStart = useAudiogramScale ? 20 : pan * (nyquist - visibleRange);
+    const visibleEnd = useAudiogramScale ? 20000 : visibleStart + visibleRange;
 
     const strokeColor = color === "cyan" ? "#22d3ee" : "#ec4899";
     ctx.strokeStyle = strokeColor;
@@ -158,18 +160,23 @@ const FFTViewer: React.FC<FFTViewerProps> = ({
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (!onPanChange || zoom <= 1 || useAudiogramScale) return;
     setIsDragging(true);
     setDragStart({ x: e.clientX, pan });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || !onPanChange || zoom <= 1) return;
+    if (!isDragging || !onPanChange || zoom <= 1 || useAudiogramScale) return;
     const delta = (e.clientX - dragStart.x) / canvasRef.current!.width;
     const newPan = Math.max(0, Math.min(1 - 1 / zoom, dragStart.pan - delta));
     onPanChange(newPan);
   };
 
-  const handleMouseUp = () => setIsDragging(false);
+  const handleMouseUp = () => {
+    if (isDragging) {
+      setIsDragging(false);
+    }
+  };
 
   return (
     <Card className="p-4 bg-card border-border">

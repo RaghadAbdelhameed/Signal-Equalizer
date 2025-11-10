@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -24,7 +24,7 @@ import AddFrequencyDialog from "@/components/AddFrequencyDialog";
 import PresetManager, { EqualizerPreset } from "@/components/PresetManager";
 import ModeSelectorDialog from "@/components/ModeSelectorDialog";
 import { AudioSourceSeparation } from "@/components/AudioSourceSeparation";
-import PlaybackControls from "@/components/PlaybackControls";
+
 
 import { useAudioProcessor } from "@/hooks/useAudioProcessor";
 
@@ -44,6 +44,14 @@ const Equalizer = () => {
   const [useAudiogramScale, setUseAudiogramScale] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState(0);
+
+  // Independent playback state for each graph
+  const [isPlayingInput, setIsPlayingInput] = useState(false);
+  const [isPlayingOutput, setIsPlayingOutput] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [currentTime, setCurrentTime] = useState(0);
+  const sourceRef = useRef<{ input: AudioBufferSourceNode | null; output: AudioBufferSourceNode | null }>({ input: null, output: null });
+  const startTimeRef = useRef(0);
 
   const [showAddFrequency, setShowAddFrequency] = useState(false);
   const [showPresetManager, setShowPresetManager] = useState(false);
@@ -185,6 +193,17 @@ const Equalizer = () => {
     setSliderValues(newRanges.map((r) => r.gain));
   };
 
+  const handleRemoveFrequency = (index: number) => {
+    if (frequencyRanges.length <= 2) {
+      toast.error("Cannot remove frequency - minimum 2 points required");
+      return;
+    }
+    const newRanges = frequencyRanges.filter((_, i) => i !== index);
+    setFrequencyRanges(newRanges);
+    setSliderValues(newRanges.map((r) => r.gain));
+    toast.success("Frequency point removed");
+  };
+
   const handleLoadPreset = (preset: EqualizerPreset) => {
     const ranges: FrequencyRange[] = [];
     for (let i = 0; i < preset.frequencies.length; i++) {
@@ -228,6 +247,87 @@ const Equalizer = () => {
     );
   };
 
+  const handlePlayPause = (type: 'input' | 'output') => {
+    if (!audioContextRef.current) return;
+    const data = type === 'input' ? audioData : outputData;
+    if (!data) return;
+
+    const isCurrentlyPlaying = type === 'input' ? isPlayingInput : isPlayingOutput;
+
+    if (isCurrentlyPlaying) {
+      // Stop this specific source and update shared current time
+      const source = type === 'input' ? sourceRef.current.input : sourceRef.current.output;
+      if (source) {
+        const elapsed = audioContextRef.current.currentTime - startTimeRef.current;
+        const newTime = Math.min(currentTime + (elapsed * playbackSpeed), data.length / audioContextRef.current.sampleRate);
+        setCurrentTime(newTime);
+        source.stop();
+        if (type === 'input') {
+          sourceRef.current.input = null;
+          setIsPlayingInput(false);
+        } else {
+          sourceRef.current.output = null;
+          setIsPlayingOutput(false);
+        }
+      }
+    } else {
+      // Play this specific source from shared current time
+      const sampleRate = audioContextRef.current.sampleRate;
+      const startSample = Math.floor(currentTime * sampleRate);
+      
+      if (startSample < data.length) {
+        const buffer = audioContextRef.current.createBuffer(1, data.length - startSample, sampleRate);
+        buffer.getChannelData(0).set(data.slice(startSample));
+        const source = audioContextRef.current.createBufferSource();
+        source.buffer = buffer;
+        source.playbackRate.value = playbackSpeed;
+        source.connect(audioContextRef.current.destination);
+        source.start();
+        source.onended = () => {
+          if (type === 'input') {
+            setIsPlayingInput(false);
+          } else {
+            setIsPlayingOutput(false);
+          }
+          // Reset position when playback ends naturally
+          setCurrentTime(0);
+        };
+        
+        if (type === 'input') {
+          sourceRef.current.input = source;
+          setIsPlayingInput(true);
+        } else {
+          sourceRef.current.output = source;
+          setIsPlayingOutput(true);
+        }
+        
+        startTimeRef.current = audioContextRef.current.currentTime;
+      }
+    }
+  };
+
+  const handleSpeedChange = (speed: number) => {
+    setPlaybackSpeed(speed);
+    if (sourceRef.current.input) sourceRef.current.input.playbackRate.value = speed;
+    if (sourceRef.current.output) sourceRef.current.output.playbackRate.value = speed;
+  };
+
+  const handleResetPlayback = (type: 'input' | 'output') => {
+    const source = type === 'input' ? sourceRef.current.input : sourceRef.current.output;
+    if (source) {
+      source.stop();
+      if (type === 'input') {
+        sourceRef.current.input = null;
+        setIsPlayingInput(false);
+      } else {
+        sourceRef.current.output = null;
+        setIsPlayingOutput(false);
+      }
+    }
+    setCurrentTime(0);
+    toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} playback reset`);
+  };
+
   const renderEqualizerHeader = (showAddButton: boolean) => (
     <div className="flex items-center justify-between mb-4">
       <h3 className="text-lg font-semibold">Equalizer Controls</h3>
@@ -251,7 +351,12 @@ const Equalizer = () => {
   );
 
   const renderEqualizerControls = () => (
-    <EqualizerControls labels={config.sliders} values={sliderValues} onChange={handleSliderChange} />
+    <EqualizerControls 
+      labels={config.sliders} 
+      values={sliderValues} 
+      onChange={handleSliderChange}
+      onRemove={config.isGeneric ? handleRemoveFrequency : undefined}
+    />
   );
 
   const renderAudioSourceSeparation = (separationMode: "musical" | "human") => (
@@ -354,13 +459,6 @@ const Equalizer = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {mainControls}
           <div className="flex flex-col gap-4">
-            <PlaybackControls
-              showSpectrograms={showSpectrograms}
-              audioContextRef={audioContextRef}
-              outputData={outputData}
-              onResetZoom={() => setZoom(1)}
-              onResetPan={() => setPan(0)}
-            />
             <SignalViewer
               title="Input Signal"
               data={audioData}
@@ -370,6 +468,12 @@ const Equalizer = () => {
               onZoomChange={setZoom}
               onPanChange={setPan}
               renderProps={{ sampleRate: audioContextRef.current?.sampleRate || 44100 }}
+              audioContextRef={audioContextRef}
+              isPlaying={isPlayingInput}
+              playbackSpeed={playbackSpeed}
+              onPlayPause={() => handlePlayPause('input')}
+              onSpeedChange={handleSpeedChange}
+              onReset={() => handleResetPlayback('input')}
             />
 
             <SignalViewer
@@ -381,6 +485,12 @@ const Equalizer = () => {
               onZoomChange={setZoom}
               onPanChange={setPan}
               renderProps={{ sampleRate: audioContextRef.current?.sampleRate || 44100 }}
+              audioContextRef={audioContextRef}
+              isPlaying={isPlayingOutput}
+              playbackSpeed={playbackSpeed}
+              onPlayPause={() => handlePlayPause('output')}
+              onSpeedChange={handleSpeedChange}
+              onReset={() => handleResetPlayback('output')}
             />
           </div>
         </div>

@@ -1,17 +1,30 @@
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useEffect, useRef, useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface EqualizerControlsProps {
   labels: string[];
   values: number[];
   onChange: (index: number, value: number[]) => void;
+  onRemove?: (index: number) => void;
 }
 
-const EqualizerControls = ({ labels, values, onChange }: EqualizerControlsProps) => {
+const EqualizerControls = ({ labels, values, onChange, onRemove }: EqualizerControlsProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [removeDialogIndex, setRemoveDialogIndex] = useState<number | null>(null);
+  const lastClickTimeRef = useRef<{ index: number; time: number } | null>(null);
 
   // Convert value (0-2) to dB scale for display (-12 to +12)
   const valueToDb = (value: number) => (value - 1) * 12;
@@ -215,7 +228,28 @@ const EqualizerControls = ({ labels, values, onChange }: EqualizerControlsProps)
     });
 
     if (closestIndex !== -1) {
-      setDraggingIndex(closestIndex);
+      // Check for double-click
+      const now = Date.now();
+      const lastClick = lastClickTimeRef.current;
+      
+      if (lastClick && lastClick.index === closestIndex && now - lastClick.time < 300) {
+        // Double-click detected
+        if (onRemove && labels.length > 2) {
+          setRemoveDialogIndex(closestIndex);
+        }
+        lastClickTimeRef.current = null;
+      } else {
+        // Single click - start dragging
+        lastClickTimeRef.current = { index: closestIndex, time: now };
+        setDraggingIndex(closestIndex);
+      }
+    }
+  };
+  
+  const handleConfirmRemove = () => {
+    if (removeDialogIndex !== null && onRemove) {
+      onRemove(removeDialogIndex);
+      setRemoveDialogIndex(null);
     }
   };
 
@@ -269,16 +303,35 @@ const EqualizerControls = ({ labels, values, onChange }: EqualizerControlsProps)
   };
 
   return (
-    <div className="relative">
-      <canvas
-        ref={canvasRef}
-        className="w-full h-[500px] cursor-pointer"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseLeave}
-      />
-    </div>
+    <>
+      <div className="relative">
+        <canvas
+          ref={canvasRef}
+          className="w-full h-[500px] cursor-pointer"
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseLeave}
+        />
+      </div>
+      
+      <AlertDialog open={removeDialogIndex !== null} onOpenChange={(open) => !open && setRemoveDialogIndex(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Frequency Point</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove the frequency point at{" "}
+              <strong>{removeDialogIndex !== null ? labels[removeDialogIndex] : ""}</strong>?
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmRemove}>Remove</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 };
 

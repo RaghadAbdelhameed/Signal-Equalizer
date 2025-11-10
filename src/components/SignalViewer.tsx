@@ -2,7 +2,7 @@ import { useRef, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { ZoomIn, ZoomOut } from "lucide-react";
+import { ZoomIn, ZoomOut, Play, Pause, RotateCcw } from "lucide-react";
 
 interface SignalViewerProps {
   title: string;
@@ -22,6 +22,12 @@ interface SignalViewerProps {
     props: Record<string, any>
   ) => void;
   renderProps?: Record<string, any>;
+  audioContextRef?: React.RefObject<AudioContext | null>;
+  isPlaying?: boolean;
+  playbackSpeed?: number;
+  onPlayPause?: () => void;
+  onSpeedChange?: (speed: number) => void;
+  onReset?: () => void;
 }
 
 const SignalViewer = ({
@@ -34,10 +40,15 @@ const SignalViewer = ({
   onPanChange,
   render,
   renderProps = {},
+  isPlaying = false,
+  playbackSpeed = 1,
+  onPlayPause,
+  onSpeedChange,
+  onReset,
 }: SignalViewerProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState(0);
+  const [dragStart, setDragStart] = useState({ x: 0, pan: 0 });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -136,18 +147,14 @@ const SignalViewer = ({
 
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true);
-    setDragStart(e.clientX);
+    setDragStart({ x: e.clientX, pan });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isDragging || !onPanChange || zoom <= 1) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const deltaX = e.clientX - dragStart;
-    const deltaPan = deltaX / canvasRef.current!.width;
-    const newPan = pan - deltaPan;
-    onPanChange(Math.max(0, Math.min(1 - 1 / zoom, newPan)));
+    const deltaX = (e.clientX - dragStart.x) / canvasRef.current!.width;
+    const newPan = Math.max(0, Math.min(1 - 1 / zoom, dragStart.pan - deltaX));
+    onPanChange(newPan);
   };
 
   const handleMouseUp = () => setIsDragging(false);
@@ -157,6 +164,42 @@ const SignalViewer = ({
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
         <div className="flex items-center gap-2">
+          {onPlayPause && (
+            <>
+              {onReset && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={onReset}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={onPlayPause}
+              >
+                {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+              </Button>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-muted-foreground min-w-[32px]">
+                  {playbackSpeed.toFixed(1)}x
+                </span>
+                <Slider
+                  value={[playbackSpeed]}
+                  onValueChange={(v) => onSpeedChange?.(v[0])}
+                  min={0.5}
+                  max={2}
+                  step={0.1}
+                  className="w-20"
+                />
+              </div>
+              <div className="w-px h-5 bg-border mx-1" />
+            </>
+          )}
           <Button
             variant="ghost"
             size="icon"
