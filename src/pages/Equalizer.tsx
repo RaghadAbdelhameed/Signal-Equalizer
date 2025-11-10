@@ -1,33 +1,32 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Play,
-  Pause,
-  SkipBack,
+  Home,
   Upload,
   Download,
-  Home,
-  ZoomIn,
-  ZoomOut,
-  RotateCcw,
-  Plus,
   Settings,
+  Plus,
+  RotateCcw,
   Save,
 } from "lucide-react";
 import { toast } from "sonner";
+
 import SignalViewer from "@/components/SignalViewer";
 import Spectrogram from "@/components/Spectrogram";
+import FFTViewer from "@/components/FFTViewer";
 import EqualizerControls from "@/components/EqualizerControls";
 import AddFrequencyDialog from "@/components/AddFrequencyDialog";
 import PresetManager, { EqualizerPreset } from "@/components/PresetManager";
 import ModeSelectorDialog from "@/components/ModeSelectorDialog";
 import { AudioSourceSeparation } from "@/components/AudioSourceSeparation";
+import PlaybackControls from "@/components/PlaybackControls";
+
+import { useAudioProcessor } from "@/hooks/useAudioProcessor";
 
 interface FrequencyRange {
   minFreq: number;
@@ -36,48 +35,46 @@ interface FrequencyRange {
 }
 
 const Equalizer = () => {
-  const { mode: urlMode } = useParams();
+  const { mode: urlMode } = useParams<{ mode: string }>();
   const navigate = useNavigate();
-  
+
   const [mode, setMode] = useState(urlMode || "generic");
   const [subMode, setSubMode] = useState<"equalizer" | "ai">("equalizer");
-  
-  // Update mode if URL changes
-  useEffect(() => {
-    if (urlMode && urlMode !== mode) {
-      setMode(urlMode);
-    }
-  }, [urlMode]);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [showSpectrograms, setShowSpectrograms] = useState(true);
-  const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [audioData, setAudioData] = useState<Float32Array | null>(null);
-  const [outputData, setOutputData] = useState<Float32Array | null>(null);
-  
-  // Specific frequencies for generic mode (most commonly used)
-  const defaultFrequencies = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-  
-  const defaultRanges: FrequencyRange[] = defaultFrequencies.map(freq => ({
-    minFreq: freq,
-    maxFreq: freq,
-    gain: 1
-  }));
-  
-  const [frequencyRanges, setFrequencyRanges] = useState<FrequencyRange[]>(defaultRanges);
-  const [sliderValues, setSliderValues] = useState<number[]>(
-    mode === "generic" ? defaultRanges.map(r => r.gain) : Array(8).fill(1)
-  );
-  
-  const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [useAudiogramScale, setUseAudiogramScale] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState(0);
-  
+
   const [showAddFrequency, setShowAddFrequency] = useState(false);
   const [showPresetManager, setShowPresetManager] = useState(false);
   const [showModeSelector, setShowModeSelector] = useState(false);
 
-  // AI Mode states
+  // Extracted audio processing logic
+  const {
+    audioFile,
+    audioData,
+    outputData,
+    audioContextRef,
+    handleFileUpload,
+    handleExport,
+    processAudio,
+    resetOutput,
+  } = useAudioProcessor();
+
+  // Default frequencies for generic mode
+  const defaultFrequencies = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+  const defaultRanges: FrequencyRange[] = defaultFrequencies.map((freq) => ({
+    minFreq: freq,
+    maxFreq: freq,
+    gain: 1,
+  }));
+
+  const [frequencyRanges, setFrequencyRanges] = useState<FrequencyRange[]>(defaultRanges);
+  const [sliderValues, setSliderValues] = useState<number[]>(
+    mode === "generic" ? defaultRanges.map((r) => r.gain) : Array(8).fill(1)
+  );
+
+  // AI Source Separation States
   const [musicalSources, setMusicalSources] = useState([
     { id: "vocals", name: "Vocals", volume: 1, muted: false, color: "#ec4899" },
     { id: "piano", name: "Piano", volume: 1, muted: false, color: "#8b5cf6" },
@@ -94,16 +91,17 @@ const Equalizer = () => {
     { id: "speaker4", name: "Speaker 4", volume: 1, muted: false, color: "#10b981" },
   ]);
 
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const sourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const playbackSpeedRef = useRef<number>(1);
-
-  const formatFrequency = (freq: number) => {
-    if (freq >= 1000) {
-      return `${(freq / 1000).toFixed(freq % 1000 === 0 ? 0 : 1)}kHz`;
+  // Sync URL mode
+  useEffect(() => {
+    if (urlMode && urlMode !== mode) {
+      setMode(urlMode);
     }
-    return `${freq}Hz`;
-  };
+  }, [urlMode]);
+
+  const formatFrequency = (freq: number) =>
+    freq >= 1000
+      ? `${(freq / 1000).toFixed(freq % 1000 === 0 ? 0 : 1)}kHz`
+      : `${freq}Hz`;
 
   const getModeConfig = () => {
     switch (mode) {
@@ -129,138 +127,30 @@ const Equalizer = () => {
           isAI: false,
         };
       case "ai-musical":
-        return {
-          title: "AI Musical Separation",
-          sliders: [],
-          isGeneric: false,
-          isAI: true,
-        };
+        return { title: "AI Musical Separation", sliders: [], isGeneric: false, isAI: true };
       case "ai-human":
-        return {
-          title: "AI Speaker Separation",
-          sliders: [],
-          isGeneric: false,
-          isAI: true,
-        };
+        return { title: "AI Speaker Separation", sliders: [], isGeneric: false, isAI: true };
       default:
         return {
           title: "Generic Mode",
-          sliders: frequencyRanges.map(r => formatFrequency(r.minFreq)),
+          sliders: frequencyRanges.map((r) => formatFrequency(r.minFreq)),
           isGeneric: true,
           isAI: false,
         };
     }
   };
 
+  const config = getModeConfig();
+
   const handleModeChange = (newMode: string) => {
     setMode(newMode);
     if (newMode === "generic") {
       setFrequencyRanges(defaultRanges);
-      setSliderValues(defaultRanges.map(r => r.gain));
+      setSliderValues(defaultRanges.map((r) => r.gain));
     } else {
       setSliderValues(Array(8).fill(1));
     }
-    // Reapply processing with new settings
-    if (audioData) {
-      setOutputData(audioData.slice());
-    }
-  };
-
-  const handleMusicalVolumeChange = (id: string, volume: number) => {
-    setMusicalSources(prev => 
-      prev.map(source => source.id === id ? { ...source, volume } : source)
-    );
-  };
-
-  const handleMusicalMuteToggle = (id: string) => {
-    setMusicalSources(prev => 
-      prev.map(source => source.id === id ? { ...source, muted: !source.muted } : source)
-    );
-  };
-
-  const handleHumanVolumeChange = (id: string, volume: number) => {
-    setHumanSources(prev => 
-      prev.map(source => source.id === id ? { ...source, volume } : source)
-    );
-  };
-
-  const handleHumanMuteToggle = (id: string) => {
-    setHumanSources(prev => 
-      prev.map(source => source.id === id ? { ...source, muted: !source.muted } : source)
-    );
-  };
-
-  const config = getModeConfig();
-
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      setAudioFile(file);
-      
-      // Create audio context
-      if (!audioContextRef.current) {
-        audioContextRef.current = new AudioContext();
-      }
-
-      // Read file as array buffer
-      const arrayBuffer = await file.arrayBuffer();
-      const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
-      
-      // Get audio data from first channel
-      const channelData = audioBuffer.getChannelData(0);
-      setAudioData(channelData);
-      setOutputData(channelData.slice()); // Initial output is same as input
-      
-      toast.success("Audio file loaded successfully");
-    } catch (error) {
-      console.error("Error loading audio:", error);
-      toast.error("Failed to load audio file");
-    }
-  };
-
-  const handlePlayPause = () => {
-    if (!audioContextRef.current || !outputData) {
-      toast.error("Please load an audio file first");
-      return;
-    }
-
-    if (isPlaying) {
-      sourceRef.current?.stop();
-      setIsPlaying(false);
-    } else {
-      // Create a new buffer with the processed data
-      const buffer = audioContextRef.current.createBuffer(
-        1,
-        outputData.length,
-        audioContextRef.current.sampleRate
-      );
-      const channelData = buffer.getChannelData(0);
-      channelData.set(outputData);
-
-      // Create and start source
-      const source = audioContextRef.current.createBufferSource();
-      source.buffer = buffer;
-      source.playbackRate.value = playbackSpeed;
-      source.connect(audioContextRef.current.destination);
-      source.start();
-      
-      source.onended = () => setIsPlaying(false);
-      sourceRef.current = source;
-      setIsPlaying(true);
-    }
-  };
-
-  const handlePlaybackSpeedChange = (value: number[]) => {
-    const newSpeed = value[0];
-    setPlaybackSpeed(newSpeed);
-    playbackSpeedRef.current = newSpeed;
-    
-    // Update playback rate in real-time if audio is playing
-    if (sourceRef.current) {
-      sourceRef.current.playbackRate.value = newSpeed;
-    }
+    resetOutput();
   };
 
   const handleSliderChange = (index: number, value: number[]) => {
@@ -268,182 +158,115 @@ const Equalizer = () => {
     newValues[index] = value[0];
     setSliderValues(newValues);
 
-    // Apply equalizer effect (simplified - in real implementation, apply FFT)
-    if (audioData) {
-      const processed = new Float32Array(audioData.length);
-      for (let i = 0; i < audioData.length; i++) {
-        // Simple gain application (in real app, this would be frequency-specific)
-        const bandIndex = Math.floor((i / audioData.length) * newValues.length);
-        processed[i] = audioData[i] * newValues[bandIndex];
+    processAudio((input) => {
+      const processed = new Float32Array(input.length);
+      for (let i = 0; i < input.length; i++) {
+        const bandIndex = Math.floor((i / input.length) * newValues.length);
+        processed[i] = input[i] * newValues[bandIndex];
       }
-      setOutputData(processed);
-    }
+      return processed;
+    });
   };
 
   const handleReset = () => {
     if (mode === "generic") {
       setFrequencyRanges(defaultRanges);
-      setSliderValues(defaultRanges.map(r => r.gain));
+      setSliderValues(defaultRanges.map((r) => r.gain));
     } else {
       setSliderValues(Array(sliderValues.length).fill(1));
     }
-    setZoom(1);
-    setPan(0);
-    if (audioData) {
-      setOutputData(audioData.slice());
-    }
+    resetOutput();
     toast.success("Settings reset");
   };
 
   const handleAddFrequency = (range: FrequencyRange) => {
     const newRanges = [...frequencyRanges, range].sort((a, b) => a.minFreq - b.minFreq);
     setFrequencyRanges(newRanges);
-    setSliderValues(newRanges.map(r => r.gain));
+    setSliderValues(newRanges.map((r) => r.gain));
   };
 
   const handleLoadPreset = (preset: EqualizerPreset) => {
-    // Convert preset frequencies back to ranges
     const ranges: FrequencyRange[] = [];
     for (let i = 0; i < preset.frequencies.length; i++) {
       const minFreq = i === 0 ? 20 : preset.frequencies[i - 1];
-      const maxFreq = preset.frequencies[i];
-      ranges.push({ minFreq, maxFreq, gain: preset.gains[i] });
+      ranges.push({ minFreq, maxFreq: preset.frequencies[i], gain: preset.gains[i] });
     }
-    
     setFrequencyRanges(ranges);
     setSliderValues(preset.gains);
-    
-    // Reapply processing with new settings
-    if (audioData) {
-      const processed = new Float32Array(audioData.length);
-      for (let i = 0; i < audioData.length; i++) {
-        const bandIndex = Math.floor((i / audioData.length) * preset.gains.length);
-        processed[i] = audioData[i] * preset.gains[bandIndex];
+
+    processAudio((input) => {
+      const processed = new Float32Array(input.length);
+      for (let i = 0; i < input.length; i++) {
+        const bandIndex = Math.floor((i / input.length) * preset.gains.length);
+        processed[i] = input[i] * preset.gains[bandIndex];
       }
-      setOutputData(processed);
-    }
+      return processed;
+    });
   };
 
-  const handleZoomIn = () => setZoom(Math.min(20, zoom * 1.5));
-  const handleZoomOut = () => setZoom(Math.max(1, zoom / 1.5));
-
-  const handleExport = async () => {
-    if (!audioContextRef.current || !outputData) {
-      toast.error("No processed audio to export");
-      return;
-    }
-
-    try {
-      // Create a new offline audio context for export
-      const offlineContext = new OfflineAudioContext(
-        1,
-        outputData.length,
-        audioContextRef.current.sampleRate
-      );
-
-      // Create buffer with processed data
-      const buffer = offlineContext.createBuffer(
-        1,
-        outputData.length,
-        audioContextRef.current.sampleRate
-      );
-      buffer.getChannelData(0).set(outputData);
-
-      // Create source and connect it
-      const source = offlineContext.createBufferSource();
-      source.buffer = buffer;
-      source.connect(offlineContext.destination);
-      source.start();
-
-      // Render the audio
-      const renderedBuffer = await offlineContext.startRendering();
-
-      // Convert to WAV
-      const wav = audioBufferToWav(renderedBuffer);
-      const blob = new Blob([wav], { type: 'audio/wav' });
-
-      // Download
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `processed_${audioFile?.name || 'audio'}.wav`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      toast.success("Audio exported successfully");
-    } catch (error) {
-      console.error("Error exporting audio:", error);
-      toast.error("Failed to export audio");
-    }
+  const handleMusicalVolumeChange = (id: string, volume: number) => {
+    setMusicalSources((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, volume } : s))
+    );
   };
 
-  const audioBufferToWav = (buffer: AudioBuffer): ArrayBuffer => {
-    const length = buffer.length * buffer.numberOfChannels * 2 + 44;
-    const arrayBuffer = new ArrayBuffer(length);
-    const view = new DataView(arrayBuffer);
-    const channels = [];
-    let offset = 0;
-    let pos = 0;
-
-    // Write WAV header
-    const setUint16 = (data: number) => {
-      view.setUint16(pos, data, true);
-      pos += 2;
-    };
-    const setUint32 = (data: number) => {
-      view.setUint32(pos, data, true);
-      pos += 4;
-    };
-
-    // RIFF identifier
-    setUint32(0x46464952);
-    // file length
-    setUint32(length - 8);
-    // RIFF type
-    setUint32(0x45564157);
-    // format chunk identifier
-    setUint32(0x20746d66);
-    // format chunk length
-    setUint32(16);
-    // sample format (raw)
-    setUint16(1);
-    // channel count
-    setUint16(buffer.numberOfChannels);
-    // sample rate
-    setUint32(buffer.sampleRate);
-    // byte rate
-    setUint32(buffer.sampleRate * 2 * buffer.numberOfChannels);
-    // block align
-    setUint16(buffer.numberOfChannels * 2);
-    // bits per sample
-    setUint16(16);
-    // data chunk identifier
-    setUint32(0x61746164);
-    // data chunk length
-    setUint32(length - pos - 4);
-
-    // Write interleaved data
-    for (let i = 0; i < buffer.numberOfChannels; i++) {
-      channels.push(buffer.getChannelData(i));
-    }
-
-    while (pos < length) {
-      for (let i = 0; i < buffer.numberOfChannels; i++) {
-        let sample = Math.max(-1, Math.min(1, channels[i][offset]));
-        sample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
-        view.setInt16(pos, sample, true);
-        pos += 2;
-      }
-      offset++;
-    }
-
-    return arrayBuffer;
+  const handleMusicalMuteToggle = (id: string) => {
+    setMusicalSources((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, muted: !s.muted } : s))
+    );
   };
+
+  const handleHumanVolumeChange = (id: string, volume: number) => {
+    setHumanSources((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, volume } : s))
+    );
+  };
+
+  const handleHumanMuteToggle = (id: string) => {
+    setHumanSources((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, muted: !s.muted } : s))
+    );
+  };
+
+  const renderEqualizerHeader = (showAddButton: boolean) => (
+    <div className="flex items-center justify-between mb-4">
+      <h3 className="text-lg font-semibold">Equalizer Controls</h3>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" onClick={handleReset}>
+          <RotateCcw className="h-3 w-3 mr-1.5" />
+          Reset
+        </Button>
+        {showAddButton && (
+          <Button variant="outline" size="sm" onClick={() => setShowAddFrequency(true)}>
+            <Plus className="h-3 w-3 mr-1.5" />
+            Add Frequency
+          </Button>
+        )}
+        <Button variant="outline" size="sm" onClick={() => setShowPresetManager(true)}>
+          <Save className="h-3 w-3 mr-1.5" />
+          Presets
+        </Button>
+      </div>
+    </div>
+  );
+
+  const renderEqualizerControls = () => (
+    <EqualizerControls labels={config.sliders} values={sliderValues} onChange={handleSliderChange} />
+  );
+
+  const renderAudioSourceSeparation = (separationMode: "musical" | "human") => (
+    <AudioSourceSeparation
+      mode={separationMode}
+      sources={separationMode === "musical" ? musicalSources : humanSources}
+      onVolumeChange={separationMode === "musical" ? handleMusicalVolumeChange : handleHumanVolumeChange}
+      onMuteToggle={separationMode === "musical" ? handleMusicalMuteToggle : handleHumanMuteToggle}
+      audioData={outputData}
+    />
+  );
 
   let mainControls;
   if (mode === "music" || mode === "voices") {
+    const separationMode = mode === "music" ? "musical" : "human";
     mainControls = (
       <Card className="p-6 bg-card border-border">
         <Tabs value={subMode} onValueChange={(v) => setSubMode(v as "equalizer" | "ai")}>
@@ -452,132 +275,27 @@ const Equalizer = () => {
             <TabsTrigger value="ai">AI Separation</TabsTrigger>
           </TabsList>
           <TabsContent value="equalizer">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Equalizer Controls</h3>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleReset}
-                  className="text-xs"
-                >
-                  <RotateCcw className="h-3 w-3 mr-1.5" />
-                  Reset
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowPresetManager(true)}
-                  className="text-xs"
-                >
-                  <Save className="h-3 w-3 mr-1.5" />
-                  Presets
-                </Button>
-              </div>
-            </div>
-            <EqualizerControls
-              labels={config.sliders}
-              values={sliderValues}
-              onChange={handleSliderChange}
-            />
+            {renderEqualizerHeader(false)}
+            {renderEqualizerControls()}
           </TabsContent>
           <TabsContent value="ai">
-            <AudioSourceSeparation
-              mode={mode === "music" ? "musical" : "human"}
-              sources={mode === "music" ? musicalSources : humanSources}
-              onVolumeChange={mode === "music" ? handleMusicalVolumeChange : handleHumanVolumeChange}
-              onMuteToggle={mode === "music" ? handleMusicalMuteToggle : handleHumanMuteToggle}
-              audioData={outputData}
-            />
+            {renderAudioSourceSeparation(separationMode)}
           </TabsContent>
         </Tabs>
       </Card>
     );
   } else if (config.isAI) {
+    const separationMode = mode === "ai-musical" ? "musical" : "human";
     mainControls = (
       <Card className="p-6 bg-card border-border">
-        <AudioSourceSeparation
-          mode={mode === "ai-musical" ? "musical" : "human"}
-          sources={mode === "ai-musical" ? musicalSources : humanSources}
-          onVolumeChange={mode === "ai-musical" ? handleMusicalVolumeChange : handleHumanVolumeChange}
-          onMuteToggle={mode === "ai-musical" ? handleMusicalMuteToggle : handleHumanMuteToggle}
-          audioData={outputData}
-        />
-      </Card>
-    );
-  } else if (config.isGeneric) {
-    mainControls = (
-      <Card className="p-6 bg-card border-border">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Equalizer Controls</h3>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleReset}
-              className="text-xs"
-            >
-              <RotateCcw className="h-3 w-3 mr-1.5" />
-              Reset
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowAddFrequency(true)}
-              className="text-xs"
-            >
-              <Plus className="h-3 w-3 mr-1.5" />
-              Add Frequency
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowPresetManager(true)}
-              className="text-xs"
-            >
-              <Save className="h-3 w-3 mr-1.5" />
-              Presets
-            </Button>
-          </div>
-        </div>
-        <EqualizerControls
-          labels={config.sliders}
-          values={sliderValues}
-          onChange={handleSliderChange}
-        />
+        {renderAudioSourceSeparation(separationMode)}
       </Card>
     );
   } else {
     mainControls = (
       <Card className="p-6 bg-card border-border">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Equalizer Controls</h3>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleReset}
-              className="text-xs"
-            >
-              <RotateCcw className="h-3 w-3 mr-1.5" />
-              Reset
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowPresetManager(true)}
-              className="text-xs"
-            >
-              <Save className="h-3 w-3 mr-1.5" />
-              Presets
-            </Button>
-          </div>
-        </div>
-        <EqualizerControls
-          labels={config.sliders}
-          values={sliderValues}
-          onChange={handleSliderChange}
-        />
+        {renderEqualizerHeader(config.isGeneric)}
+        {renderEqualizerControls()}
       </Card>
     );
   }
@@ -589,12 +307,7 @@ const Equalizer = () => {
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate("/")}
-                className="hover:bg-primary/10"
-              >
+              <Button variant="ghost" size="icon" onClick={() => navigate("/")} className="hover:bg-primary/10">
                 <Home className="h-5 w-5" />
               </Button>
               <div>
@@ -608,15 +321,15 @@ const Equalizer = () => {
             </div>
 
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowModeSelector(true)}
-              >
+              <Button variant="outline" size="sm" onClick={() => setShowModeSelector(true)}>
                 <Settings className="h-4 w-4 mr-2" />
                 Change Mode
               </Button>
-              <Button variant="outline" size="sm" onClick={() => document.getElementById('audio-upload')?.click()}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => document.getElementById("audio-upload")?.click()}
+              >
                 <Upload className="h-4 w-4 mr-2" />
                 Upload
               </Button>
@@ -641,94 +354,13 @@ const Equalizer = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {mainControls}
           <div className="flex flex-col gap-4">
-            {/* Playback Controls */}
-            <Card className="p-4 bg-card/50 backdrop-blur-sm border-border/50">
-              <div className="flex flex-wrap items-center gap-4">
-                {/* Playback Controls */}
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handlePlayPause}
-                    className="h-10 w-10 rounded-full hover:bg-primary/10"
-                  >
-                    {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
-                  </Button>
-                </div>
-
-                {/* Speed Control */}
-                <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">{playbackSpeed.toFixed(1)}x</span>
-                  <Slider
-                    value={[playbackSpeed]}
-                    onValueChange={handlePlaybackSpeedChange}
-                    min={0.5}
-                    max={2}
-                    step={0.1}
-                    className="flex-1"
-                  />
-                </div>
-
-                {/* Zoom Control */}
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleZoomOut}
-                    className="h-8 w-8 rounded-full hover:bg-primary/10"
-                    disabled={zoom <= 1}
-                  >
-                    <ZoomOut className="h-4 w-4" />
-                  </Button>
-                  <span className="text-xs text-muted-foreground min-w-[40px] text-center">{zoom.toFixed(1)}x</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleZoomIn}
-                    className="h-8 w-8 rounded-full hover:bg-primary/10"
-                    disabled={zoom >= 20}
-                  >
-                    <ZoomIn className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                {/* Pan Control */}
-                {zoom > 1 && (
-                  <div className="flex items-center gap-2 flex-1 min-w-[150px]">
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">Pan</span>
-                    <Slider
-                      value={[pan]}
-                      onValueChange={(v) => setPan(v[0])}
-                      min={0}
-                      max={Math.max(0, 1 - 1/zoom)}
-                      step={0.01}
-                      className="flex-1"
-                    />
-                  </div>
-                )}
-
-                {/* Options */}
-                <div className="flex items-center gap-4 ml-auto">
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={useAudiogramScale}
-                      onCheckedChange={setUseAudiogramScale}
-                      id="audiogram-scale"
-                    />
-                    <Label htmlFor="audiogram-scale" className="text-xs cursor-pointer whitespace-nowrap">Audiogram</Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={showSpectrograms}
-                      onCheckedChange={setShowSpectrograms}
-                      id="show-spectrograms"
-                    />
-                    <Label htmlFor="show-spectrograms" className="text-xs cursor-pointer whitespace-nowrap">Spectrograms</Label>
-                  </div>
-                </div>
-              </div>
-            </Card>
-            {/* Signal Viewers */}
+            <PlaybackControls
+              showSpectrograms={showSpectrograms}
+              audioContextRef={audioContextRef}
+              outputData={outputData}
+              onResetZoom={() => setZoom(1)}
+              onResetPan={() => setPan(0)}
+            />
             <SignalViewer
               title="Input Signal"
               data={audioData}
@@ -737,7 +369,9 @@ const Equalizer = () => {
               pan={pan}
               onZoomChange={setZoom}
               onPanChange={setPan}
+              renderProps={{ sampleRate: audioContextRef.current?.sampleRate || 44100 }}
             />
+
             <SignalViewer
               title="Output Signal"
               data={outputData}
@@ -746,25 +380,58 @@ const Equalizer = () => {
               pan={pan}
               onZoomChange={setZoom}
               onPanChange={setPan}
+              renderProps={{ sampleRate: audioContextRef.current?.sampleRate || 44100 }}
             />
           </div>
         </div>
 
-        {/* Spectrograms */}
-        {showSpectrograms && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in">
-            <Spectrogram
-              title="Input Spectrogram"
-              data={audioData}
-              color="cyan"
-            />
-            <Spectrogram
-              title="Output Spectrogram"
-              data={outputData}
-              color="magenta"
-            />
+
+        {/* FFT Section */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between mx-4">
+            <h2 className="text-lg font-semibold">Frequency Spectrum (FFT)</h2>
+            <div className="flex items-center gap-2 ml-auto">
+              <Switch
+                checked={useAudiogramScale}
+                onCheckedChange={setUseAudiogramScale}
+                id="audiogram-scale"
+              />
+              <Label htmlFor="audiogram-scale" className="text-sm cursor-pointer whitespace-nowrap">
+                Audiogram
+              </Label>
+            </div>
           </div>
-        )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <FFTViewer title="Input Signal FFT" color="cyan" />
+            <FFTViewer title="Output Signal FFT" color="magenta" />
+          </div>
+
+        </div>
+
+        {/* Spectrograms Section */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between mx-4">
+            <h2 className="text-lg font-semibold">Spectrograms</h2>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={showSpectrograms}
+                onCheckedChange={setShowSpectrograms}
+                id="show-spectrograms-global"
+              />
+              <Label htmlFor="show-spectrograms-global" className="text-sm cursor-pointer">
+                Show Spectrograms
+              </Label>
+            </div>
+          </div>
+
+          {showSpectrograms && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in">
+              <Spectrogram title="Input Spectrogram" data={audioData} color="cyan" />
+              <Spectrogram title="Output Spectrogram" data={outputData} color="magenta" />
+            </div>
+          )}
+        </div>
       </main>
 
       {/* Dialogs */}
@@ -774,24 +441,23 @@ const Equalizer = () => {
         onSelectMode={handleModeChange}
         currentMode={mode}
       />
-      
+
       {config.isGeneric && (
-        <>
-          <AddFrequencyDialog
-            open={showAddFrequency}
-            onOpenChange={setShowAddFrequency}
-            onAdd={handleAddFrequency}
-            existingRanges={frequencyRanges}
-          />
-          <PresetManager
-            open={showPresetManager}
-            onOpenChange={setShowPresetManager}
-            currentFrequencies={frequencyRanges.map(r => r.maxFreq)}
-            currentGains={sliderValues}
-            onLoad={handleLoadPreset}
-          />
-        </>
+        <AddFrequencyDialog
+          open={showAddFrequency}
+          onOpenChange={setShowAddFrequency}
+          onAdd={handleAddFrequency}
+          existingRanges={frequencyRanges}
+        />
       )}
+
+      <PresetManager
+        open={showPresetManager}
+        onOpenChange={setShowPresetManager}
+        currentFrequencies={frequencyRanges.map((r) => r.maxFreq)}
+        currentGains={sliderValues}
+        onLoad={handleLoadPreset}
+      />
     </div>
   );
 };
