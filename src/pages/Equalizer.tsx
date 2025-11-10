@@ -403,17 +403,27 @@ const Equalizer = () => {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <FFTViewer 
-              title="Input Signal FFT" 
-              color="cyan" 
+            <FFTViewer
+              title="Input Signal"
+              color="cyan"
               audioData={audioData}
+              zoom={zoom}
+              pan={pan}
+              onZoomChange={setZoom}
+              onPanChange={setPan}
               sampleRate={audioContextRef.current?.sampleRate || 44100}
+              useAudiogramScale={useAudiogramScale}
             />
-            <FFTViewer 
-              title="Output Signal FFT" 
-              color="magenta" 
+            <FFTViewer
+              title="Output Signal"
+              color="magenta"
               audioData={outputData}
+              zoom={zoom}
+              pan={pan}
+              onZoomChange={setZoom}
+              onPanChange={setPan}
               sampleRate={audioContextRef.current?.sampleRate || 44100}
+              useAudiogramScale={useAudiogramScale}
             />
           </div>
 
