@@ -27,6 +27,7 @@ import { AudioSourceSeparation } from "@/components/AudioSourceSeparation";
 
 
 import { useAudioProcessor } from "@/hooks/useAudioProcessor";
+import { useModeConfig } from "@/hooks/useModeConfig";
 
 interface FrequencyRange {
   minFreq: number;
@@ -44,14 +45,8 @@ const Equalizer = () => {
   const [useAudiogramScale, setUseAudiogramScale] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState(0);
-
-  // Independent playback state for each graph
-  const [isPlayingInput, setIsPlayingInput] = useState(false);
-  const [isPlayingOutput, setIsPlayingOutput] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
-  const sourceRef = useRef<{ input: AudioBufferSourceNode | null; output: AudioBufferSourceNode | null }>({ input: null, output: null });
-  const startTimeRef = useRef(0);
 
   const [showAddFrequency, setShowAddFrequency] = useState(false);
   const [showPresetManager, setShowPresetManager] = useState(false);
@@ -106,49 +101,7 @@ const Equalizer = () => {
     }
   }, [urlMode]);
 
-  const formatFrequency = (freq: number) =>
-    freq >= 1000
-      ? `${(freq / 1000).toFixed(freq % 1000 === 0 ? 0 : 1)}kHz`
-      : `${freq}Hz`;
-
-  const getModeConfig = () => {
-    switch (mode) {
-      case "music":
-        return {
-          title: "Musical Instruments Mode",
-          sliders: ["Guitar", "Piano", "Drums", "Bass", "Violin", "Saxophone", "Trumpet", "Vocals"],
-          isGeneric: false,
-          isAI: false,
-        };
-      case "animals":
-        return {
-          title: "Animal Sounds Mode",
-          sliders: ["Dog", "Cat", "Bird", "Lion", "Elephant", "Whale", "Frog", "Cricket"],
-          isGeneric: false,
-          isAI: false,
-        };
-      case "voices":
-        return {
-          title: "Human Voices Mode",
-          sliders: ["Male 1", "Female 1", "Male 2", "Female 2", "Child 1", "Elder 1", "Child 2", "Elder 2"],
-          isGeneric: false,
-          isAI: false,
-        };
-      case "ai-musical":
-        return { title: "AI Musical Separation", sliders: [], isGeneric: false, isAI: true };
-      case "ai-human":
-        return { title: "AI Speaker Separation", sliders: [], isGeneric: false, isAI: true };
-      default:
-        return {
-          title: "Generic Mode",
-          sliders: frequencyRanges.map((r) => formatFrequency(r.minFreq)),
-          isGeneric: true,
-          isAI: false,
-        };
-    }
-  };
-
-  const config = getModeConfig();
+  const config = useModeConfig(mode, frequencyRanges);
 
   const handleModeChange = (newMode: string) => {
     setMode(newMode);
@@ -247,87 +200,6 @@ const Equalizer = () => {
     );
   };
 
-  const handlePlayPause = (type: 'input' | 'output') => {
-    if (!audioContextRef.current) return;
-    const data = type === 'input' ? audioData : outputData;
-    if (!data) return;
-
-    const isCurrentlyPlaying = type === 'input' ? isPlayingInput : isPlayingOutput;
-
-    if (isCurrentlyPlaying) {
-      // Stop this specific source and update shared current time
-      const source = type === 'input' ? sourceRef.current.input : sourceRef.current.output;
-      if (source) {
-        const elapsed = audioContextRef.current.currentTime - startTimeRef.current;
-        const newTime = Math.min(currentTime + (elapsed * playbackSpeed), data.length / audioContextRef.current.sampleRate);
-        setCurrentTime(newTime);
-        source.stop();
-        if (type === 'input') {
-          sourceRef.current.input = null;
-          setIsPlayingInput(false);
-        } else {
-          sourceRef.current.output = null;
-          setIsPlayingOutput(false);
-        }
-      }
-    } else {
-      // Play this specific source from shared current time
-      const sampleRate = audioContextRef.current.sampleRate;
-      const startSample = Math.floor(currentTime * sampleRate);
-      
-      if (startSample < data.length) {
-        const buffer = audioContextRef.current.createBuffer(1, data.length - startSample, sampleRate);
-        buffer.getChannelData(0).set(data.slice(startSample));
-        const source = audioContextRef.current.createBufferSource();
-        source.buffer = buffer;
-        source.playbackRate.value = playbackSpeed;
-        source.connect(audioContextRef.current.destination);
-        source.start();
-        source.onended = () => {
-          if (type === 'input') {
-            setIsPlayingInput(false);
-          } else {
-            setIsPlayingOutput(false);
-          }
-          // Reset position when playback ends naturally
-          setCurrentTime(0);
-        };
-        
-        if (type === 'input') {
-          sourceRef.current.input = source;
-          setIsPlayingInput(true);
-        } else {
-          sourceRef.current.output = source;
-          setIsPlayingOutput(true);
-        }
-        
-        startTimeRef.current = audioContextRef.current.currentTime;
-      }
-    }
-  };
-
-  const handleSpeedChange = (speed: number) => {
-    setPlaybackSpeed(speed);
-    if (sourceRef.current.input) sourceRef.current.input.playbackRate.value = speed;
-    if (sourceRef.current.output) sourceRef.current.output.playbackRate.value = speed;
-  };
-
-  const handleResetPlayback = (type: 'input' | 'output') => {
-    const source = type === 'input' ? sourceRef.current.input : sourceRef.current.output;
-    if (source) {
-      source.stop();
-      if (type === 'input') {
-        sourceRef.current.input = null;
-        setIsPlayingInput(false);
-      } else {
-        sourceRef.current.output = null;
-        setIsPlayingOutput(false);
-      }
-    }
-    setCurrentTime(0);
-    toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} playback reset`);
-  };
-
   const renderEqualizerHeader = (showAddButton: boolean) => (
     <div className="flex items-center justify-between mb-4">
       <h3 className="text-lg font-semibold">Equalizer Controls</h3>
@@ -366,6 +238,11 @@ const Equalizer = () => {
       onVolumeChange={separationMode === "musical" ? handleMusicalVolumeChange : handleHumanVolumeChange}
       onMuteToggle={separationMode === "musical" ? handleMusicalMuteToggle : handleHumanMuteToggle}
       audioData={outputData}
+      audioContextRef={audioContextRef}  // ADDED: Pass audioContextRef
+      currentTime={currentTime}          // ADDED: Pass currentTime
+      onCurrentTimeChange={setCurrentTime}  // ADDED: Pass onCurrentTimeChange
+      playbackSpeed={playbackSpeed}      // ADDED: Pass playbackSpeed
+      onPlaybackSpeedChange={setPlaybackSpeed}  // ADDED: Pass onPlaybackSpeedChange
     />
   );
 
@@ -393,7 +270,18 @@ const Equalizer = () => {
     const separationMode = mode === "ai-musical" ? "musical" : "human";
     mainControls = (
       <Card className="p-6 bg-card border-border">
-        {renderAudioSourceSeparation(separationMode)}
+        <AudioSourceSeparation
+          mode={separationMode}
+          sources={separationMode === "musical" ? musicalSources : humanSources}
+          onVolumeChange={separationMode === "musical" ? handleMusicalVolumeChange : handleHumanVolumeChange}
+          onMuteToggle={separationMode === "musical" ? handleMusicalMuteToggle : handleHumanMuteToggle}
+          audioData={outputData}
+          audioContextRef={audioContextRef}  // ADDED: Pass audioContextRef
+          currentTime={currentTime}          // ADDED: Pass currentTime
+          onCurrentTimeChange={setCurrentTime}  // ADDED: Pass onCurrentTimeChange
+          playbackSpeed={playbackSpeed}      // ADDED: Pass playbackSpeed
+          onPlaybackSpeedChange={setPlaybackSpeed}  // ADDED: Pass onPlaybackSpeedChange
+        />
       </Card>
     );
   } else {
@@ -469,11 +357,10 @@ const Equalizer = () => {
               onPanChange={setPan}
               renderProps={{ sampleRate: audioContextRef.current?.sampleRate || 44100 }}
               audioContextRef={audioContextRef}
-              isPlaying={isPlayingInput}
+              currentTime={currentTime}
+              onCurrentTimeChange={setCurrentTime}
               playbackSpeed={playbackSpeed}
-              onPlayPause={() => handlePlayPause('input')}
-              onSpeedChange={handleSpeedChange}
-              onReset={() => handleResetPlayback('input')}
+              onPlaybackSpeedChange={setPlaybackSpeed}
             />
 
             <SignalViewer
@@ -486,11 +373,10 @@ const Equalizer = () => {
               onPanChange={setPan}
               renderProps={{ sampleRate: audioContextRef.current?.sampleRate || 44100 }}
               audioContextRef={audioContextRef}
-              isPlaying={isPlayingOutput}
+              currentTime={currentTime}
+              onCurrentTimeChange={setCurrentTime}
               playbackSpeed={playbackSpeed}
-              onPlayPause={() => handlePlayPause('output')}
-              onSpeedChange={handleSpeedChange}
-              onReset={() => handleResetPlayback('output')}
+              onPlaybackSpeedChange={setPlaybackSpeed}
             />
           </div>
         </div>
@@ -592,4 +478,4 @@ const Equalizer = () => {
   );
 };
 
-export default Equalizer;
+export default Equalizer;  

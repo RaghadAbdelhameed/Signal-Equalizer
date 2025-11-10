@@ -1,3 +1,4 @@
+import { useRef } from "react"; 
 import { Volume2, VolumeX } from "lucide-react";
 import { Slider } from "./ui/slider";
 import { Card } from "./ui/card";
@@ -19,6 +20,11 @@ interface AudioSourceSeparationProps {
   onVolumeChange: (id: string, volume: number) => void;
   onMuteToggle: (id: string) => void;
   audioData: Float32Array | null;
+  audioContextRef: React.RefObject<AudioContext | null>;
+  currentTime: number;
+  onCurrentTimeChange: (time: number) => void;
+  playbackSpeed: number;
+  onPlaybackSpeedChange: (speed: number) => void;
 }
 
 export const AudioSourceSeparation = ({
@@ -27,6 +33,11 @@ export const AudioSourceSeparation = ({
   onVolumeChange,
   onMuteToggle,
   audioData,
+  audioContextRef,
+  currentTime,
+  onCurrentTimeChange,
+  playbackSpeed,
+  onPlaybackSpeedChange,
 }: AudioSourceSeparationProps) => {
   return (
     <div className="space-y-6">
@@ -98,11 +109,17 @@ export const AudioSourceSeparation = ({
                 <SignalViewer
                   title=""
                   data={audioData}
-                  color={source.color.replace('#', '')}
+                  color={source.color}
                   zoom={1}
                   pan={0}
                   onZoomChange={() => {}}
                   onPanChange={() => {}}
+                  audioContextRef={audioContextRef}
+                  currentTime={currentTime}
+                  onCurrentTimeChange={onCurrentTimeChange}
+                  playbackSpeed={playbackSpeed}
+                  onPlaybackSpeedChange={onPlaybackSpeedChange}
+                  renderProps={{ sampleRate: audioContextRef.current?.sampleRate || 44100 }}
                 />
               </div>
             </div>
