@@ -6,13 +6,16 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { ZoomIn, ZoomOut } from "lucide-react";
-import { fft } from "@/utils/fft";
-import { constructComplexArray } from "@/utils/utils";
+
+interface FFTData {
+  frequencies: number[];
+  magnitudes: number[];
+}
 
 interface FFTViewerProps {
   title: string;
   color?: string;
-  audioData?: Float32Array | null;
+  fftData?: FFTData | null;
   sampleRate?: number;
   zoom?: number;
   pan?: number;
@@ -25,7 +28,7 @@ interface FFTViewerProps {
 const FFTViewer: React.FC<FFTViewerProps> = ({
   title,
   color = "cyan",
-  audioData,
+  fftData,
   sampleRate = 44100,
   zoom = 1,
   pan = 0,
@@ -38,13 +41,13 @@ const FFTViewer: React.FC<FFTViewerProps> = ({
   const [dragStart, setDragStart] = useState({ x: 0, pan: 0 });
 
   useEffect(() => {
-    if (!audioData || !canvasRef.current) return;
+    if (!fftData || !canvasRef.current) return;
     drawFFT();
-  }, [audioData, sampleRate, zoom, pan, useAudiogramScale]);
+  }, [fftData, sampleRate, zoom, pan, useAudiogramScale]);
 
   const drawFFT = () => {
     const canvas = canvasRef.current;
-    if (!canvas || !audioData) return;
+    if (!canvas || !fftData) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
@@ -54,7 +57,7 @@ const FFTViewer: React.FC<FFTViewerProps> = ({
     ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, width, height);
 
-    const result = computeFFT(audioData, sampleRate);
+    const result = fftData;
     if (!result) return;
 
     let maxMag = 1;
@@ -139,26 +142,6 @@ const FFTViewer: React.FC<FFTViewerProps> = ({
     ctx.stroke();
   };
 
-  const computeFFT = (data: Float32Array, sr: number) => {
-    try {
-      const size = Math.pow(2, Math.floor(Math.log2(data.length)));
-      const slice = data.slice(0, size);
-      const complex = constructComplexArray(Array.from(slice));
-      const res = fft(complex);
-
-      const freqs: number[] = [];
-      const mags: number[] = [];
-      for (let i = 0; i < size / 2; i++) {
-        freqs.push((i * sr) / size);
-        mags.push(Math.hypot(res.real[i], res.imag[i]));
-      }
-      return { frequencies: freqs, magnitudes: mags };
-    } catch (e) {
-      console.error("FFT error:", e);
-      return null;
-    }
-  };
-
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!onPanChange || zoom <= 1 || useAudiogramScale) return;
     setIsDragging(true);
@@ -234,7 +217,7 @@ const FFTViewer: React.FC<FFTViewerProps> = ({
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
         />
-        {!audioData && (
+        {!fftData && (
           <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm">
             No data loaded
           </div>

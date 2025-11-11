@@ -1,11 +1,19 @@
-// src/hooks/useAudioProcessor.ts
 import { useRef, useState, useCallback } from "react";
 import { toast } from "sonner";
+import { fft } from "../utils/fft"; 
+import { constructComplexArray } from "../utils/utils";
+
+export interface FFTData {
+  frequencies: number[];
+  magnitudes: number[];
+}
 
 export interface AudioProcessorResult {
   audioFile: File | null;
   audioData: Float32Array | null;
   outputData: Float32Array | null;
+  inputFFT: FFTData | null;
+  outputFFT: FFTData | null;
   audioContextRef: React.RefObject<AudioContext | null>;
   handleFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   handleExport: () => Promise<void>;
@@ -13,10 +21,32 @@ export interface AudioProcessorResult {
   resetOutput: () => void;
 }
 
+const computeFFT = (data: Float32Array, sr: number): FFTData | null => {
+  try {
+    const size = Math.pow(2, Math.floor(Math.log2(data.length)));
+    const slice = data.slice(0, size);
+    const complex = constructComplexArray(Array.from(slice));
+    const res = fft(complex);
+
+    const freqs: number[] = [];
+    const mags: number[] = [];
+    for (let i = 0; i < size / 2; i++) {
+      freqs.push((i * sr) / size);
+      mags.push(Math.hypot(res.real[i], res.imag[i]));
+    }
+    return { frequencies: freqs, magnitudes: mags };
+  } catch (e) {
+    console.error("FFT error:", e);
+    return null;
+  }
+};
+
 export const useAudioProcessor = (): AudioProcessorResult => {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioData, setAudioData] = useState<Float32Array | null>(null);
   const [outputData, setOutputData] = useState<Float32Array | null>(null);
+  const [inputFFT, setInputFFT] = useState<FFTData | null>(null);
+  const [outputFFT, setOutputFFT] = useState<FFTData | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -53,6 +83,11 @@ export const useAudioProcessor = (): AudioProcessorResult => {
       setAudioData(channelData);
       setOutputData(channelData.slice());
 
+      const sampleRate = audioContextRef.current.sampleRate;
+      const fftData = computeFFT(channelData, sampleRate);
+      setInputFFT(fftData);
+      setOutputFFT(fftData);
+
       toast.success("Audio loaded (mono mix) – matches Librosa");
     } catch (error) {
       console.error("Error loading audio:", error);
@@ -61,16 +96,18 @@ export const useAudioProcessor = (): AudioProcessorResult => {
   }, []);
 
   const processAudio = useCallback((processor: (input: Float32Array) => Float32Array) => {
-    if (!audioData) return;
+    if (!audioData || !audioContextRef.current) return;
     const processed = processor(audioData);
     setOutputData(processed);
+    setOutputFFT(computeFFT(processed, audioContextRef.current.sampleRate));
   }, [audioData]);
 
   const resetOutput = useCallback(() => {
-    if (audioData) {
+    if (audioData && inputFFT) {
       setOutputData(audioData.slice());
+      setOutputFFT(inputFFT);
     }
-  }, [audioData]);
+  }, [audioData, inputFFT]);
 
   const audioBufferToWav = (buffer: AudioBuffer): ArrayBuffer => {
     const length = buffer.length * buffer.numberOfChannels * 2 + 44;
@@ -165,6 +202,8 @@ export const useAudioProcessor = (): AudioProcessorResult => {
     audioFile,
     audioData,
     outputData,
+    inputFFT,
+    outputFFT,
     audioContextRef,
     handleFileUpload,
     handleExport,

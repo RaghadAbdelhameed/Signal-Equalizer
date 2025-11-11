@@ -57,6 +57,8 @@ const Equalizer = () => {
     audioFile,
     audioData,
     outputData,
+    inputFFT,
+    outputFFT,
     audioContextRef,
     handleFileUpload,
     handleExport,
@@ -402,7 +404,7 @@ const Equalizer = () => {
             <FFTViewer
               title="Input Signal"
               color="cyan"
-              audioData={audioData}
+              fftData={inputFFT}
               zoom={zoom}
               pan={pan}
               onZoomChange={setZoom}
@@ -413,7 +415,7 @@ const Equalizer = () => {
             <FFTViewer
               title="Output Signal"
               color="magenta"
-              audioData={outputData}
+              fftData={outputFFT}
               zoom={zoom}
               pan={pan}
               onZoomChange={setZoom}
@@ -478,4 +480,4 @@ const Equalizer = () => {
   );
 };
 
-export default Equalizer;  
+export default Equalizer;
