@@ -1,68 +1,80 @@
 'use strict';
 
-import { fft, ifft } from './fft';
+import { ifft } from './fft';
 import { ComplexArray } from './utils';
 
-/**
- * Equalizer function: applies frequency-domain gain adjustments to a signal.
- * @param signal - Input real-valued signal array
- * @param gainGridHz - Array of [frequency (Hz), gain] pairs
- * @param sampleRate - Sampling rate in Hz
- * @returns The equalized real-valued signal
- */
 export function equalizer(
-  signal: number[],
-  gainGridHz: [number, number][],
+  fftOutput: ComplexArray,
+  gainControlsHz: [number, number][],
   sampleRate: number
-): number[] {
-  // 1. Convert signal to frequency domain using FFT
-  const fftOutput: ComplexArray = fft(signal);
+): { timeDomain: number[]; frequencyDomain: ComplexArray } {
+  
+  console.log("Equalizer called with:", {
+    fftSize: fftOutput.real.length,
+    gainControls: gainControlsHz,
+    sampleRate
+  });
 
-  // 2. Convert Hz grid to FFT bin gains
-  const gainGridBins = createBinGains(fftOutput.real.length, gainGridHz, sampleRate);
+  // 1. Convert Hz controls to FFT bin gains
+  const binGains = createBinGains(fftOutput.real.length, gainControlsHz, sampleRate);
+  console.log("Bin gains (first 10):", binGains.slice(0, 10));
 
-  // 3. Apply gains to each FFT bin
-  const multiplied: ComplexArray = {
+  // 2. Apply gains to each FFT bin
+  const frequencyDomain: ComplexArray = {
     real: new Array(fftOutput.real.length),
     imag: new Array(fftOutput.imag.length),
   };
 
+  let changesApplied = 0;
   for (let i = 0; i < fftOutput.real.length; i++) {
-    multiplied.real[i] = fftOutput.real[i] * gainGridBins[i];
-    multiplied.imag[i] = fftOutput.imag[i] * gainGridBins[i];
+    const originalReal = fftOutput.real[i];
+    const originalImag = fftOutput.imag[i];
+    
+    frequencyDomain.real[i] = originalReal * binGains[i];
+    frequencyDomain.imag[i] = originalImag * binGains[i];
+    
+    if (binGains[i] !== 1.0) {
+      changesApplied++;
+    }
   }
 
-  // 4. Convert back to time domain using IFFT
-  const equalizedSignal = ifft(multiplied);
+  console.log(`Applied gains to ${changesApplied} bins`);
 
-  // 5. Return only the real part
-  return equalizedSignal.real;
+  // 3. Convert back to time domain using IFFT
+  const equalizedSignal = ifft(frequencyDomain);
+  console.log("IFFT completed, time domain length:", equalizedSignal.real.length);
+
+  // 4. Return both time and frequency domain results
+  return {
+    timeDomain: equalizedSignal.real,
+    frequencyDomain: frequencyDomain
+  };
 }
 
-/**
- * Converts frequency–gain pairs in Hz into per-bin gain values for FFT bins.
- * @param fftSize - Number of FFT bins
- * @param gainGridHz - Array of [frequency (Hz), gain] pairs
- * @param sampleRate - Sampling rate in Hz
- * @returns Array of per-bin gains
- */
 export function createBinGains(
   fftSize: number,
-  gainGridHz: [number, number][],
+  gainControlsHz: [number, number][],
   sampleRate: number
 ): number[] {
   const binGains = new Array(fftSize).fill(1.0);
 
-  for (let i = 0; i < gainGridHz.length; i++) {
-    const [freqHz, gain] = gainGridHz[i];
-    const binIndex = Math.round((freqHz * fftSize) / sampleRate); // K = (Fi * N) / Fs
+  console.log(`Creating bin gains for FFT size: ${fftSize}, sample rate: ${sampleRate}`);
+
+  for (let i = 0; i < gainControlsHz.length; i++) {
+    const [freqHz, gain] = gainControlsHz[i];
+    const binIndex = Math.round((freqHz * fftSize) / sampleRate);
+
+    console.log(`Control ${i}: ${freqHz}Hz -> bin ${binIndex}, gain: ${gain}`);
 
     if (binIndex >= 0 && binIndex < fftSize) {
       binGains[binIndex] = gain;
+      console.log(`Set bin ${binIndex} gain to ${gain}`);
+    } else {
+      console.warn(`Bin index ${binIndex} out of range for frequency ${freqHz}Hz`);
     }
   }
 
   return binGains;
 }
 
-export default { equalizer };
+export default { equalizer, createBinGains };

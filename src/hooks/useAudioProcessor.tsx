@@ -1,7 +1,8 @@
 import { useRef, useState, useCallback } from "react";
 import { toast } from "sonner";
-import { fft } from "../utils/fft"; 
-import { constructComplexArray } from "../utils/utils";
+import { fft } from "../utils/fft";
+import { equalizer } from "../utils/equalizer";
+import { ComplexArray } from "../utils/utils";
 
 export interface FFTData {
   frequencies: number[];
@@ -17,24 +18,44 @@ export interface AudioProcessorResult {
   audioContextRef: React.RefObject<AudioContext | null>;
   handleFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   handleExport: () => Promise<void>;
-  processAudio: (processor: (input: Float32Array) => Float32Array) => void;
+  processAudio: (gainControlsHz: [number, number][]) => void;
   resetOutput: () => void;
 }
 
+const constructComplexArray = (real: number[]): ComplexArray => ({
+  real,
+  imag: new Array(real.length).fill(0),
+});
+
+// Store both the complex FFT and visualization data
+let storedComplexFFT: ComplexArray | null = null;
+let storedFFTData: FFTData | null = null;
+
 const computeFFT = (data: Float32Array, sr: number): FFTData | null => {
   try {
-    const size = Math.pow(2, Math.floor(Math.log2(data.length)));
-    const slice = data.slice(0, size);
-    const complex = constructComplexArray(Array.from(slice));
-    const res = fft(complex);
-
+    const originalLength = data.length;
+    const fftSize = Math.pow(2, Math.ceil(Math.log2(originalLength)));
+    const padded = new Float32Array(fftSize);
+    padded.set(data);
+    
+    // Compute complex FFT for processing
+    const complex = constructComplexArray(Array.from(padded));
+    const complexFFT = fft(complex);
+    
+    // Store the complex FFT for later processing
+    storedComplexFFT = complexFFT;
+    
+    // Compute FFT data for visualization
     const freqs: number[] = [];
     const mags: number[] = [];
-    for (let i = 0; i < size / 2; i++) {
-      freqs.push((i * sr) / size);
-      mags.push(Math.hypot(res.real[i], res.imag[i]));
+    for (let i = 0; i < fftSize / 2; i++) {
+      freqs.push((i * sr) / fftSize);
+      mags.push(Math.hypot(complexFFT.real[i], complexFFT.imag[i]));
     }
-    return { frequencies: freqs, magnitudes: mags };
+    
+    const fftData = { frequencies: freqs, magnitudes: mags };
+    storedFFTData = fftData;
+    return fftData;
   } catch (e) {
     console.error("FFT error:", e);
     return null;
@@ -84,9 +105,13 @@ export const useAudioProcessor = (): AudioProcessorResult => {
       setOutputData(channelData.slice());
 
       const sampleRate = audioContextRef.current.sampleRate;
-      const fftData = computeFFT(channelData, sampleRate);
-      setInputFFT(fftData);
-      setOutputFFT(fftData);
+      
+      // Compute FFT and store both visualization data and complex FFT
+      const fftResult = computeFFT(channelData, sampleRate);
+      if (fftResult) {
+        setInputFFT(fftResult);
+        setOutputFFT(fftResult);
+      }
 
       toast.success("Audio loaded (mono mix) – matches Librosa");
     } catch (error) {
@@ -95,19 +120,55 @@ export const useAudioProcessor = (): AudioProcessorResult => {
     }
   }, []);
 
-  const processAudio = useCallback((processor: (input: Float32Array) => Float32Array) => {
-    if (!audioData || !audioContextRef.current) return;
-    const processed = processor(audioData);
-    setOutputData(processed);
-    setOutputFFT(computeFFT(processed, audioContextRef.current.sampleRate));
+  const processAudio = useCallback((gainControlsHz: [number, number][]) => {
+    if (!audioData || !audioContextRef.current || !storedComplexFFT) {
+      console.log("Missing data for processing:", {
+        audioData: !!audioData,
+        audioContext: !!audioContextRef.current,
+        storedComplexFFT: !!storedComplexFFT
+      });
+      return;
+    }
+
+    console.log("Processing audio with gain controls:", gainControlsHz);
+
+    const sampleRate = audioContextRef.current.sampleRate;
+    const originalLength = audioData.length;
+    
+    // Apply equalization using the stored FFT output and gain controls
+    const sortedControls = gainControlsHz.sort((a, b) => a[0] - b[0]);
+    const { timeDomain, frequencyDomain } = equalizer(
+      storedComplexFFT, 
+      sortedControls, 
+      sampleRate
+    );
+    
+    // Convert back to time domain and trim padding
+    const outputArray = new Float32Array(timeDomain.slice(0, originalLength));
+    setOutputData(outputArray);
+    
+    // Compute output FFT from the modified frequency domain for visualization
+    const fftSize = frequencyDomain.real.length;
+    const freqs: number[] = [];
+    const mags: number[] = [];
+    for (let i = 0; i < fftSize / 2; i++) {
+      freqs.push((i * sampleRate) / fftSize);
+      mags.push(Math.hypot(frequencyDomain.real[i], frequencyDomain.imag[i]));
+    }
+    
+    const newOutputFFT = { frequencies: freqs, magnitudes: mags };
+    setOutputFFT(newOutputFFT);
+
+    console.log("Processing complete - output data length:", outputArray.length);
+    console.log("First 10 samples of output:", outputArray.slice(0, 10));
   }, [audioData]);
 
   const resetOutput = useCallback(() => {
-    if (audioData && inputFFT) {
+    if (audioData && storedFFTData) {
       setOutputData(audioData.slice());
-      setOutputFFT(inputFFT);
+      setOutputFFT(storedFFTData);
     }
-  }, [audioData, inputFFT]);
+  }, [audioData]);
 
   const audioBufferToWav = (buffer: AudioBuffer): ArrayBuffer => {
     const length = buffer.length * buffer.numberOfChannels * 2 + 44;

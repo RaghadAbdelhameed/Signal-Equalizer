@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -24,7 +24,6 @@ import AddFrequencyDialog from "@/components/AddFrequencyDialog";
 import PresetManager, { EqualizerPreset } from "@/components/PresetManager";
 import ModeSelectorDialog from "@/components/ModeSelectorDialog";
 import { AudioSourceSeparation } from "@/components/AudioSourceSeparation";
-
 
 import { useAudioProcessor } from "@/hooks/useAudioProcessor";
 import { useModeConfig } from "@/hooks/useModeConfig";
@@ -102,6 +101,7 @@ const Equalizer = () => {
       setMode(urlMode);
     }
   }, [urlMode]);
+  
 
   const config = useModeConfig(mode, frequencyRanges);
 
@@ -116,19 +116,49 @@ const Equalizer = () => {
     resetOutput();
   };
 
+  useEffect(() => {
+    console.log("Slider values changed:", sliderValues);
+    console.log("Audio data available:", !!audioData);
+    console.log("Current mode:", mode, "Sub mode:", subMode);
+    
+    if (audioData && !config.isAI && subMode === "equalizer") {
+      const gainControls = getGainControls();
+      console.log("Calling processAudio with controls:", gainControls);
+      processAudio(gainControls);
+    } else {
+      console.log("Skipping processing - conditions not met");
+    }
+  }, [sliderValues, audioData, processAudio, config.isAI, subMode, mode]);
+
+  const getGainControls = (): [number, number][] => {
+    const freqLabels = config.sliders;
+    console.log("Frequency labels:", freqLabels);
+    console.log("Slider values:", sliderValues);
+    
+    const frequencies = freqLabels.map((label) => {
+      let freq = parseFloat(label.replace(/[^0-9.]/g, ""));
+      if (label.toLowerCase().includes("k")) {
+        freq *= 1000;
+      }
+      console.log(`Label: ${label} -> Frequency: ${freq}Hz`);
+      return freq;
+    });
+    
+    const controls: [number, number][] = frequencies.map((freq, i) => {
+      const gain = sliderValues[i] || 1;
+      return [freq, gain];
+    });
+    
+    console.log("Final gain controls:", controls);
+    return controls;
+  };
+
+  // Make sure handleSliderChange is updating state correctly
   const handleSliderChange = (index: number, value: number[]) => {
+    console.log(`Slider ${index} changed to:`, value[0]);
     const newValues = [...sliderValues];
     newValues[index] = value[0];
     setSliderValues(newValues);
-
-    processAudio((input) => {
-      const processed = new Float32Array(input.length);
-      for (let i = 0; i < input.length; i++) {
-        const bandIndex = Math.floor((i / input.length) * newValues.length);
-        processed[i] = input[i] * newValues[bandIndex];
-      }
-      return processed;
-    });
   };
 
   const handleReset = () => {
@@ -167,15 +197,6 @@ const Equalizer = () => {
     }
     setFrequencyRanges(ranges);
     setSliderValues(preset.gains);
-
-    processAudio((input) => {
-      const processed = new Float32Array(input.length);
-      for (let i = 0; i < input.length; i++) {
-        const bandIndex = Math.floor((i / input.length) * preset.gains.length);
-        processed[i] = input[i] * preset.gains[bandIndex];
-      }
-      return processed;
-    });
   };
 
   const handleMusicalVolumeChange = (id: string, volume: number) => {
@@ -240,11 +261,11 @@ const Equalizer = () => {
       onVolumeChange={separationMode === "musical" ? handleMusicalVolumeChange : handleHumanVolumeChange}
       onMuteToggle={separationMode === "musical" ? handleMusicalMuteToggle : handleHumanMuteToggle}
       audioData={outputData}
-      audioContextRef={audioContextRef}  // ADDED: Pass audioContextRef
-      currentTime={currentTime}          // ADDED: Pass currentTime
-      onCurrentTimeChange={setCurrentTime}  // ADDED: Pass onCurrentTimeChange
-      playbackSpeed={playbackSpeed}      // ADDED: Pass playbackSpeed
-      onPlaybackSpeedChange={setPlaybackSpeed}  // ADDED: Pass onPlaybackSpeedChange
+      audioContextRef={audioContextRef}
+      currentTime={currentTime}
+      onCurrentTimeChange={setCurrentTime}
+      playbackSpeed={playbackSpeed}
+      onPlaybackSpeedChange={setPlaybackSpeed}
     />
   );
 
@@ -278,11 +299,11 @@ const Equalizer = () => {
           onVolumeChange={separationMode === "musical" ? handleMusicalVolumeChange : handleHumanVolumeChange}
           onMuteToggle={separationMode === "musical" ? handleMusicalMuteToggle : handleHumanMuteToggle}
           audioData={outputData}
-          audioContextRef={audioContextRef}  // ADDED: Pass audioContextRef
-          currentTime={currentTime}          // ADDED: Pass currentTime
-          onCurrentTimeChange={setCurrentTime}  // ADDED: Pass onCurrentTimeChange
-          playbackSpeed={playbackSpeed}      // ADDED: Pass playbackSpeed
-          onPlaybackSpeedChange={setPlaybackSpeed}  // ADDED: Pass onPlaybackSpeedChange
+          audioContextRef={audioContextRef}
+          currentTime={currentTime}
+          onCurrentTimeChange={setCurrentTime}
+          playbackSpeed={playbackSpeed}
+          onPlaybackSpeedChange={setPlaybackSpeed}
         />
       </Card>
     );
@@ -383,7 +404,6 @@ const Equalizer = () => {
           </div>
         </div>
 
-
         {/* FFT Section */}
         <div className="space-y-4">
           <div className="flex items-center justify-between mx-4">
@@ -424,7 +444,6 @@ const Equalizer = () => {
               useAudiogramScale={useAudiogramScale}
             />
           </div>
-
         </div>
 
         {/* Spectrograms Section */}
