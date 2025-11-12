@@ -67,16 +67,23 @@ const Equalizer = () => {
 
   // Default frequencies for generic mode
   const defaultFrequencies = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-  const defaultRanges: FrequencyRange[] = defaultFrequencies.map((freq) => ({
-    minFreq: freq,
-    maxFreq: freq,
-    gain: 1,
-  }));
+  const defaultRanges: FrequencyRange[] = defaultFrequencies.map((freq, index) => {
+    const minFreq = index === 0 ? 20 : (defaultFrequencies[index - 1] + freq) / 2;
+    const maxFreq = index === defaultFrequencies.length - 1 ? 20000 : (freq + defaultFrequencies[index + 1]) / 2;
+    return {
+      minFreq,
+      maxFreq,
+      gain: 1,
+    };
+  });
 
   const [frequencyRanges, setFrequencyRanges] = useState<FrequencyRange[]>(defaultRanges);
   const [sliderValues, setSliderValues] = useState<number[]>(
     mode === "generic" ? defaultRanges.map((r) => r.gain) : Array(8).fill(1)
   );
+
+  // Add processTrigger state
+  const [processTrigger, setProcessTrigger] = useState(0);
 
   // AI Source Separation States
   const [musicalSources, setMusicalSources] = useState([
@@ -101,7 +108,28 @@ const Equalizer = () => {
       setMode(urlMode);
     }
   }, [urlMode]);
-  
+
+  // Debug effect
+  useEffect(() => {
+    console.log("=== FREQUENCY RANGES DEBUG ===");
+    console.log("Current frequencyRanges:", frequencyRanges);
+    console.log("Current sliderValues:", sliderValues);
+    
+    // Check for duplicates
+    const centers = frequencyRanges.map(r => Math.round((r.minFreq + r.maxFreq) / 2));
+    const duplicates = centers.filter((item, index) => centers.indexOf(item) !== index);
+    
+    if (duplicates.length > 0) {
+      console.warn("DUPLICATE CENTER FREQUENCIES FOUND:", duplicates);
+    }
+    
+    // Check for overlaps
+    for (let i = 0; i < frequencyRanges.length - 1; i++) {
+      if (frequencyRanges[i].maxFreq > frequencyRanges[i + 1].minFreq) {
+        console.warn(`OVERLAP DETECTED: Range ${i} max (${frequencyRanges[i].maxFreq}) > Range ${i+1} min (${frequencyRanges[i+1].minFreq})`);
+      }
+    }
+  }, [frequencyRanges]);
 
   const config = useModeConfig(mode, frequencyRanges);
 
@@ -113,52 +141,155 @@ const Equalizer = () => {
     } else {
       setSliderValues(Array(8).fill(1));
     }
+    setProcessTrigger(prev => prev + 1);
     resetOutput();
   };
 
-  useEffect(() => {
-    console.log("Slider values changed:", sliderValues);
-    console.log("Audio data available:", !!audioData);
-    console.log("Current mode:", mode, "Sub mode:", subMode);
-    
-    if (audioData && !config.isAI && subMode === "equalizer") {
-      const gainControls = getGainControls();
-      console.log("Calling processAudio with controls:", gainControls);
-      processAudio(gainControls);
-    } else {
-      console.log("Skipping processing - conditions not met");
-    }
-  }, [sliderValues, audioData, processAudio, config.isAI, subMode, mode]);
+  const getGainControls = (sampleRate: number): [number, number, number][] => {
+    const nyquist = sampleRate / 2;
+    const maxFreqCap = Math.min(20000, nyquist);
 
-  const getGainControls = (): [number, number][] => {
-    const freqLabels = config.sliders;
-    console.log("Frequency labels:", freqLabels);
-    console.log("Slider values:", sliderValues);
-    
-    const frequencies = freqLabels.map((label) => {
-      let freq = parseFloat(label.replace(/[^0-9.]/g, ""));
-      if (label.toLowerCase().includes("k")) {
-        freq *= 1000;
+    console.log("=== GET GAIN CONTROLS ===");
+    console.log("Frequency ranges:", frequencyRanges);
+
+    if (config.isGeneric) {
+      // Use stored min/max from frequencyRanges
+      const sortedRanges = [...frequencyRanges].sort((a, b) => a.minFreq - b.minFreq);
+      const controls: [number, number, number][] = sortedRanges.map((range, index) => {
+        const control: [number, number, number] = [
+          range.minFreq,
+          Math.min(range.maxFreq, maxFreqCap),
+          range.gain
+        ];
+        console.log(`Range ${index}: ${control[0]}Hz - ${control[1]}Hz, gain: ${control[2]}`);
+        return control;
+      });
+      return controls;
+    } else {
+      // Auto-compute half-distance ranges for fixed modes
+      const freqLabels = config.sliders;
+      const centers = freqLabels.map((label) => {
+        let freq = parseFloat(label.replace(/[^0-9.]/g, ""));
+        if (label.toLowerCase().includes("k")) {
+          freq *= 1000;
+        }
+        return freq;
+      });
+
+      const ranges: [number, number, number][] = [];
+      for (let i = 0; i < centers.length; i++) {
+        const minFreq = i === 0 ? 20 : (centers[i-1] + centers[i]) / 2;
+        const maxFreq = i === centers.length - 1 ? maxFreqCap : (centers[i] + centers[i+1]) / 2;
+        const range: [number, number, number] = [minFreq, maxFreq, sliderValues[i]];
+        console.log(`Fixed range ${i}: ${range[0]}Hz - ${range[1]}Hz, gain: ${range[2]}`);
+        ranges.push(range);
       }
-      console.log(`Label: ${label} -> Frequency: ${freq}Hz`);
-      return freq;
-    });
-    
-    const controls: [number, number][] = frequencies.map((freq, i) => {
-      const gain = sliderValues[i] || 1;
-      return [freq, gain];
-    });
-    
-    console.log("Final gain controls:", controls);
-    return controls;
+      
+      return ranges;
+    }
   };
 
-  // Make sure handleSliderChange is updating state correctly
+  // Processing effect
+  useEffect(() => {
+    console.log("🔄 Processing triggered. State:", {
+      sliderValues,
+      frequencyRanges: frequencyRanges.length,
+      audioData: !!audioData,
+      mode,
+      subMode,
+      isAI: config.isAI
+    });
+    
+    if (audioData && !config.isAI && subMode === "equalizer") {
+      const sampleRate = audioContextRef.current?.sampleRate || 44100;
+      const rangeControls = getGainControls(sampleRate);
+      console.log("🎵 Calling processAudio with range controls:", rangeControls);
+      processAudio(rangeControls);
+    } else {
+      console.log("⏭️ Skipping processing - conditions not met");
+    }
+  }, [processTrigger, audioData, config.isAI, subMode, mode]);
+
+  // Simple validation function
+  const validateAndFixRanges = (ranges: FrequencyRange[]): FrequencyRange[] => {
+    const sorted = [...ranges].sort((a, b) => a.minFreq - b.minFreq);
+    const fixedRanges: FrequencyRange[] = [];
+    
+    for (let i = 0; i < sorted.length; i++) {
+      const current = { ...sorted[i] };
+      
+      // Ensure minFreq < maxFreq
+      if (current.minFreq >= current.maxFreq) {
+        console.warn(`Fixing invalid range: minFreq (${current.minFreq}) >= maxFreq (${current.maxFreq})`);
+        current.maxFreq = current.minFreq + 10;
+      }
+      
+      // Ensure no overlap with previous range
+      if (i > 0 && current.minFreq <= fixedRanges[i-1].maxFreq) {
+        console.warn(`Fixing overlap: range ${i} minFreq (${current.minFreq}) <= previous maxFreq (${fixedRanges[i-1].maxFreq})`);
+        current.minFreq = fixedRanges[i-1].maxFreq + 1;
+      }
+      
+      // Ensure reasonable frequency bounds
+      current.minFreq = Math.max(20, Math.round(current.minFreq));
+      current.maxFreq = Math.min(20000, Math.round(current.maxFreq));
+      
+      fixedRanges.push(current);
+    }
+    
+    console.log("✅ Validated ranges:", fixedRanges);
+    return fixedRanges;
+  };
+
+  // CORRECTED handleAddFrequency - FIXED DUPLICATION ISSUE
+  const handleAddFrequency = (newRange: FrequencyRange) => {
+    console.log("➕ Adding new frequency range:", newRange);
+    
+    // Round the frequencies to avoid floating point issues
+    const roundedRange = {
+      minFreq: Math.round(newRange.minFreq),
+      maxFreq: Math.round(newRange.maxFreq),
+      gain: newRange.gain
+    };
+    
+    console.log("Rounded range:", roundedRange);
+    
+    // Create a copy of current ranges and add the new one
+    const newRanges = [...frequencyRanges, roundedRange];
+    
+    // Validate and fix any issues
+    const validatedRanges = validateAndFixRanges(newRanges);
+    
+    // Check if we actually added a new range (not a duplicate)
+    if (validatedRanges.length === frequencyRanges.length) {
+      console.warn("No new range added - likely a duplicate");
+      toast.error("Frequency range already exists or is too close to existing range");
+      return;
+    }
+    
+    setFrequencyRanges(validatedRanges);
+    setSliderValues(validatedRanges.map((r) => r.gain));
+    setProcessTrigger(prev => prev + 1);
+    
+    toast.success("Frequency range added");
+  };
+
+  // handleSliderChange
   const handleSliderChange = (index: number, value: number[]) => {
-    console.log(`Slider ${index} changed to:`, value[0]);
+    console.log(`🎚️ Slider ${index} changed to:`, value[0]);
     const newValues = [...sliderValues];
     newValues[index] = value[0];
     setSliderValues(newValues);
+
+    // Also update frequencyRanges in generic mode
+    if (config.isGeneric) {
+      const newRanges = [...frequencyRanges];
+      newRanges[index].gain = value[0];
+      setFrequencyRanges(newRanges);
+    }
+    
+    // Trigger processing
+    setProcessTrigger(prev => prev + 1);
   };
 
   const handleReset = () => {
@@ -168,35 +299,51 @@ const Equalizer = () => {
     } else {
       setSliderValues(Array(sliderValues.length).fill(1));
     }
+    setProcessTrigger(prev => prev + 1);
     resetOutput();
     toast.success("Settings reset");
   };
 
-  const handleAddFrequency = (range: FrequencyRange) => {
-    const newRanges = [...frequencyRanges, range].sort((a, b) => a.minFreq - b.minFreq);
-    setFrequencyRanges(newRanges);
-    setSliderValues(newRanges.map((r) => r.gain));
-  };
-
+  // CORRECTED handleRemoveFrequency - FIXED DUPLICATION ISSUE
   const handleRemoveFrequency = (index: number) => {
     if (frequencyRanges.length <= 2) {
       toast.error("Cannot remove frequency - minimum 2 points required");
       return;
     }
+    
     const newRanges = frequencyRanges.filter((_, i) => i !== index);
-    setFrequencyRanges(newRanges);
-    setSliderValues(newRanges.map((r) => r.gain));
+    
+    // Recalculate boundaries using simple validation
+    const validatedRanges = validateAndFixRanges(newRanges);
+    
+    setFrequencyRanges(validatedRanges);
+    setSliderValues(validatedRanges.map((r) => r.gain));
+    setProcessTrigger(prev => prev + 1);
+    
     toast.success("Frequency point removed");
   };
 
   const handleLoadPreset = (preset: EqualizerPreset) => {
-    const ranges: FrequencyRange[] = [];
-    for (let i = 0; i < preset.frequencies.length; i++) {
-      const minFreq = i === 0 ? 20 : preset.frequencies[i - 1];
-      ranges.push({ minFreq, maxFreq: preset.frequencies[i], gain: preset.gains[i] });
+    if (config.isGeneric && preset.frequencies && preset.gains) {
+      // For generic mode, create ranges from preset frequencies
+      const ranges: FrequencyRange[] = [];
+      for (let i = 0; i < preset.frequencies.length; i++) {
+        const minFreq = i === 0 ? 20 : (preset.frequencies[i-1] + preset.frequencies[i]) / 2;
+        const maxFreq = i === preset.frequencies.length - 1 ? 20000 : (preset.frequencies[i] + preset.frequencies[i+1]) / 2;
+        ranges.push({ 
+          minFreq: Math.round(minFreq),
+          maxFreq: Math.round(maxFreq),
+          gain: preset.gains[i] 
+        });
+      }
+      setFrequencyRanges(ranges);
+      setSliderValues(preset.gains);
+    } else {
+      // For fixed modes, just set the gains
+      setSliderValues(preset.gains || Array(sliderValues.length).fill(1));
     }
-    setFrequencyRanges(ranges);
-    setSliderValues(preset.gains);
+    setProcessTrigger(prev => prev + 1);
+    toast.success("Preset loaded");
   };
 
   const handleMusicalVolumeChange = (id: string, volume: number) => {
@@ -491,7 +638,7 @@ const Equalizer = () => {
       <PresetManager
         open={showPresetManager}
         onOpenChange={setShowPresetManager}
-        currentFrequencies={frequencyRanges.map((r) => r.maxFreq)}
+        currentFrequencies={frequencyRanges.map((r) => Math.round((r.minFreq + r.maxFreq) / 2))}
         currentGains={sliderValues}
         onLoad={handleLoadPreset}
       />

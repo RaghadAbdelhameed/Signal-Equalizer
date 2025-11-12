@@ -18,7 +18,7 @@ export interface AudioProcessorResult {
   audioContextRef: React.RefObject<AudioContext | null>;
   handleFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   handleExport: () => Promise<void>;
-  processAudio: (gainControlsHz: [number, number][]) => void;
+  processAudio: (rangeControlsHz: [number, number, number][]) => void;
   resetOutput: () => void;
 }
 
@@ -120,9 +120,9 @@ export const useAudioProcessor = (): AudioProcessorResult => {
     }
   }, []);
 
-  const processAudio = useCallback((gainControlsHz: [number, number][]) => {
+  const processAudio = useCallback((rangeControlsHz: [number, number, number][]) => {
     if (!audioData || !audioContextRef.current || !storedComplexFFT) {
-      console.log("Missing data for processing:", {
+      console.log("❌ Missing data for processing:", {
         audioData: !!audioData,
         audioContext: !!audioContextRef.current,
         storedComplexFFT: !!storedComplexFFT
@@ -130,13 +130,13 @@ export const useAudioProcessor = (): AudioProcessorResult => {
       return;
     }
 
-    console.log("Processing audio with gain controls:", gainControlsHz);
+    console.log("🎵 Processing audio with range controls:", rangeControlsHz);
 
     const sampleRate = audioContextRef.current.sampleRate;
     const originalLength = audioData.length;
     
-    // Apply equalization using the stored FFT output and gain controls
-    const sortedControls = gainControlsHz.sort((a, b) => a[0] - b[0]);
+    // Apply equalization using the stored FFT output and range controls
+    const sortedControls = rangeControlsHz.sort((a, b) => a[0] - b[0]);
     const { timeDomain, frequencyDomain } = equalizer(
       storedComplexFFT, 
       sortedControls, 
@@ -145,6 +145,18 @@ export const useAudioProcessor = (): AudioProcessorResult => {
     
     // Convert back to time domain and trim padding
     const outputArray = new Float32Array(timeDomain.slice(0, originalLength));
+    
+    // Log some sample differences to verify changes
+    if (audioData && outputArray) {
+      let differences = 0;
+      for (let i = 0; i < Math.min(10, audioData.length); i++) {
+        if (Math.abs(audioData[i] - outputArray[i]) > 0.001) {
+          differences++;
+        }
+      }
+      console.log(`🔍 Sample comparison: ${differences}/10 samples differ significantly`);
+    }
+    
     setOutputData(outputArray);
     
     // Compute output FFT from the modified frequency domain for visualization
@@ -159,8 +171,7 @@ export const useAudioProcessor = (): AudioProcessorResult => {
     const newOutputFFT = { frequencies: freqs, magnitudes: mags };
     setOutputFFT(newOutputFFT);
 
-    console.log("Processing complete - output data length:", outputArray.length);
-    console.log("First 10 samples of output:", outputArray.slice(0, 10));
+    console.log("✅ Processing complete - output data length:", outputArray.length);
   }, [audioData]);
 
   const resetOutput = useCallback(() => {
@@ -188,9 +199,9 @@ export const useAudioProcessor = (): AudioProcessorResult => {
     };
 
     setUint32(0x46464952); // RIFF
-    setUint32(length - 8);
+    setUint32(length - 8); 
     setUint32(0x45564157); // WAVE
-    setUint32(0x20746d66); // fmt
+    setUint32(0x20746d66); // fmt 
     setUint32(16);
     setUint16(1); // PCM
     setUint16(buffer.numberOfChannels);
