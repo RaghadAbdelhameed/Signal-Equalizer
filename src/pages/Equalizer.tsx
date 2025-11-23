@@ -66,13 +66,12 @@ const Equalizer = () => {
   } = useAudioProcessor();
 
   // Default frequencies for generic mode
-  const defaultFrequencies = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+  const defaultFrequencies = [20, 250, 1000, 16000];
   const defaultRanges: FrequencyRange[] = defaultFrequencies.map((freq, index) => {
-    const minFreq = index === 0 ? 20 : (defaultFrequencies[index - 1] + freq) / 2;
-    const maxFreq = index === defaultFrequencies.length - 1 ? 20000 : (freq + defaultFrequencies[index + 1]) / 2;
+
     return {
-      minFreq,
-      maxFreq,
+      minFreq:freq - 32,
+      maxFreq:freq + 32,
       gain: 1,
     };
   });
@@ -204,7 +203,7 @@ const Equalizer = () => {
       const sampleRate = audioContextRef.current?.sampleRate || 44100;
       const rangeControls = getGainControls(sampleRate);
       console.log("🎵 Calling processAudio with range controls:", rangeControls);
-      processAudio(rangeControls);
+      processAudio(frequencyRanges);
     } else {
       console.log("⏭️ Skipping processing - conditions not met");
     }
@@ -212,34 +211,31 @@ const Equalizer = () => {
 
   // Simple validation function
   const validateAndFixRanges = (ranges: FrequencyRange[]): FrequencyRange[] => {
-    const sorted = [...ranges].sort((a, b) => a.minFreq - b.minFreq);
-    const fixedRanges: FrequencyRange[] = [];
-    
-    for (let i = 0; i < sorted.length; i++) {
-      const current = { ...sorted[i] };
+  // 1. Sort ranges by their midpoint frequency
+  const sorted = [...ranges].sort(
+    (a, b) => ((a.minFreq + a.maxFreq) / 2) - ((b.minFreq + b.maxFreq) / 2)
+  );
+
+  // 2. Ensure unique midpoints
+  for (let i = 1; i < sorted.length; i++) {
+    const prevMid = (sorted[i - 1].minFreq + sorted[i - 1].maxFreq) / 2;
+    const currMid = (sorted[i].minFreq + sorted[i].maxFreq) / 2;
+
+    if (currMid <= prevMid) {
+      const newMid = prevMid + 1; // Increase midpoint by 1 Hz
       
-      // Ensure minFreq < maxFreq
-      if (current.minFreq >= current.maxFreq) {
-        console.warn(`Fixing invalid range: minFreq (${current.minFreq}) >= maxFreq (${current.maxFreq})`);
-        current.maxFreq = current.minFreq + 10;
-      }
-      
-      // Ensure no overlap with previous range
-      if (i > 0 && current.minFreq <= fixedRanges[i-1].maxFreq) {
-        console.warn(`Fixing overlap: range ${i} minFreq (${current.minFreq}) <= previous maxFreq (${fixedRanges[i-1].maxFreq})`);
-        current.minFreq = fixedRanges[i-1].maxFreq + 1;
-      }
-      
-      // Ensure reasonable frequency bounds
-      current.minFreq = Math.max(20, Math.round(current.minFreq));
-      current.maxFreq = Math.min(20000, Math.round(current.maxFreq));
-      
-      fixedRanges.push(current);
+      console.warn(
+        `Adjusted midpoint at index ${i}. Old midpoint: ${currMid}, New midpoint: ${newMid}`
+      );
+
     }
-    
-    console.log("✅ Validated ranges:", fixedRanges);
-    return fixedRanges;
-  };
+  }
+
+  console.log("✔ Final ranges (midpoint sorted & unique):", sorted);
+  return sorted;
+};
+
+
 
   // CORRECTED handleAddFrequency - FIXED DUPLICATION ISSUE
   const handleAddFrequency = (newRange: FrequencyRange) => {
@@ -267,6 +263,7 @@ const Equalizer = () => {
       return;
     }
     
+    console.log("New ranges: ", validatedRanges)
     setFrequencyRanges(validatedRanges);
     setSliderValues(validatedRanges.map((r) => r.gain));
     setProcessTrigger(prev => prev + 1);

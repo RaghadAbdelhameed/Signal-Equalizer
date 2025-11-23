@@ -8,7 +8,11 @@ export interface FFTData {
   frequencies: number[];
   magnitudes: number[];
 }
-
+interface FrequencyRange {
+  minFreq: number;
+  maxFreq: number;
+  gain: number;
+}
 export interface AudioProcessorResult {
   audioFile: File | null;
   audioData: Float32Array | null;
@@ -18,7 +22,7 @@ export interface AudioProcessorResult {
   audioContextRef: React.RefObject<AudioContext | null>;
   handleFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   handleExport: () => Promise<void>;
-  processAudio: (rangeControlsHz: [number, number, number][]) => void;
+  processAudio: (rangeControlsHz: FrequencyRange[]) => void;
   resetOutput: () => void;
 }
 
@@ -120,59 +124,57 @@ export const useAudioProcessor = (): AudioProcessorResult => {
     }
   }, []);
 
-  const processAudio = useCallback((rangeControlsHz: [number, number, number][]) => {
-    if (!audioData || !audioContextRef.current || !storedComplexFFT) {
-      console.log("❌ Missing data for processing:", {
-        audioData: !!audioData,
-        audioContext: !!audioContextRef.current,
-        storedComplexFFT: !!storedComplexFFT
-      });
-      return;
-    }
+  const processAudio = useCallback((ranges: FrequencyRange[]) => {
+  if (!audioData || !audioContextRef.current || !storedComplexFFT) {
+    console.log("❌ Missing data for processing:", {
+      audioData: !!audioData,
+      audioContext: !!audioContextRef.current,
+      storedComplexFFT: !!storedComplexFFT
+    });
+    return;
+  }
 
-    console.log("🎵 Processing audio with range controls:", rangeControlsHz);
+  console.log("🎵 Processing audio with frequency ranges:", ranges);
 
-    const sampleRate = audioContextRef.current.sampleRate;
-    const originalLength = audioData.length;
-    
-    // Apply equalization using the stored FFT output and range controls
-    const sortedControls = rangeControlsHz.sort((a, b) => a[0] - b[0]);
-    const { timeDomain, frequencyDomain } = equalizer(
-      storedComplexFFT, 
-      sortedControls, 
-      sampleRate
-    );
-    
-    // Convert back to time domain and trim padding
-    const outputArray = new Float32Array(timeDomain.slice(0, originalLength));
-    
-    // Log some sample differences to verify changes
-    if (audioData && outputArray) {
-      let differences = 0;
-      for (let i = 0; i < Math.min(10, audioData.length); i++) {
-        if (Math.abs(audioData[i] - outputArray[i]) > 0.001) {
-          differences++;
-        }
-      }
-      console.log(`🔍 Sample comparison: ${differences}/10 samples differ significantly`);
-    }
-    
-    setOutputData(outputArray);
-    
-    // Compute output FFT from the modified frequency domain for visualization
-    const fftSize = frequencyDomain.real.length;
-    const freqs: number[] = [];
-    const mags: number[] = [];
-    for (let i = 0; i < fftSize / 2; i++) {
-      freqs.push((i * sampleRate) / fftSize);
-      mags.push(Math.hypot(frequencyDomain.real[i], frequencyDomain.imag[i]));
-    }
-    
-    const newOutputFFT = { frequencies: freqs, magnitudes: mags };
-    setOutputFFT(newOutputFFT);
+  const sampleRate = audioContextRef.current.sampleRate;
+  const originalLength = audioData.length;
 
-    console.log("✅ Processing complete - output data length:", outputArray.length);
-  }, [audioData]);
+  // Convert FrequencyRange objects to numeric tuples and sort
+  const sortedControls = ranges
+    .map(r => [r.minFreq, r.maxFreq, r.gain] as [number, number, number])
+    .sort((a, b) => a[0] - b[0]);
+
+  const { timeDomain, frequencyDomain } = equalizer(
+    storedComplexFFT,
+    sortedControls,
+    sampleRate
+  );
+
+  const outputArray = new Float32Array(timeDomain.slice(0, originalLength));
+
+  let differences = 0;
+  for (let i = 0; i < Math.min(10, audioData.length); i++) {
+    if (Math.abs(audioData[i] - outputArray[i]) > 0.001) {
+      differences++;
+    }
+  }
+  console.log(`🔍 Sample comparison: ${differences}/10 samples differ significantly`);
+
+  setOutputData(outputArray);
+
+  const fftSize = frequencyDomain.real.length;
+  const freqs: number[] = [];
+  const mags: number[] = [];
+  for (let i = 0; i < fftSize / 2; i++) {
+    freqs.push((i * sampleRate) / fftSize);
+    mags.push(Math.hypot(frequencyDomain.real[i], frequencyDomain.imag[i]));
+  }
+
+  setOutputFFT({ frequencies: freqs, magnitudes: mags });
+
+  console.log("✅ Processing complete - output data length:", outputArray.length);
+}, [audioData]);
+
 
   const resetOutput = useCallback(() => {
     if (audioData && storedFFTData) {

@@ -50,7 +50,7 @@ export const useModeConfig = (mode: string, frequencyRanges: FrequencyRange[]): 
       default:
         return {
           title: "Generic Mode",
-          sliders: frequencyRanges.map((r) => formatFrequency(r.minFreq)),
+          sliders: frequencyRanges.map((r) => formatFrequency(r.minFreq + (r.maxFreq - r.minFreq) / 2)),
           isGeneric: true,
           isAI: false,
         };

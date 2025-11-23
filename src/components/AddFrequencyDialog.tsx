@@ -40,8 +40,8 @@ const AddFrequencyDialog = ({
     }
     
     onAdd({
-      minFreq: midpoint,
-      maxFreq: midpoint,
+      minFreq: minFreq,
+      maxFreq: maxFreq,
       gain
     });
     setMinFreq(100);
