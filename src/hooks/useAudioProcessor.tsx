@@ -19,11 +19,17 @@ export interface AudioProcessorResult {
   outputData: Float32Array | null;
   inputFFT: FFTData | null;
   outputFFT: FFTData | null;
+  inputSlices: Uint8Array[];
+  outputSlices: Uint8Array[];
+  isPlaying: boolean;
   audioContextRef: React.RefObject<AudioContext | null>;
   handleFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   handleExport: () => Promise<void>;
-  processAudio: (rangeControlsHz: FrequencyRange[]) => void;
+  processAudio: (rangeControlsHz: [number, number, number][]) => void;
   resetOutput: () => void;
+  playAudio: () => void;
+  stopAudio: () => void;
+  setPlaybackTimeListener: (callback: ((time: number) => void) | null) => void;
 }
 
 const constructComplexArray = (real: number[]): ComplexArray => ({
@@ -35,20 +41,37 @@ const constructComplexArray = (real: number[]): ComplexArray => ({
 let storedComplexFFT: ComplexArray | null = null;
 let storedFFTData: FFTData | null = null;
 
-const computeFFT = (data: Float32Array, sr: number): FFTData | null => {
-  try {
+export const useAudioProcessor = (): AudioProcessorResult => {
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [audioData, setAudioData] = useState<Float32Array | null>(null);
+  const [outputData, setOutputData] = useState<Float32Array | null>(null);
+  const [inputFFT, setInputFFT] = useState<FFTData | null>(null);
+  const [outputFFT, setOutputFFT] = useState<FFTData | null>(null);
+  const [inputSlices, setInputSlices] = useState<Uint8Array[]>([]);
+  const [outputSlices, setOutputSlices] = useState<Uint8Array[]>([]);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const startTimeRef = useRef<number>(0);
+
+  const [onPlaybackTimeUpdate, setOnPlaybackTimeUpdate] = useState<((time: number) => void) | null>(null);
+
+  /** Compute FFT for processing and visualization */
+  const computeFFT = useCallback((data: Float32Array, sr: number): FFTData | null => {
     const originalLength = data.length;
     const fftSize = Math.pow(2, Math.ceil(Math.log2(originalLength)));
     const padded = new Float32Array(fftSize);
     padded.set(data);
-    
+
     // Compute complex FFT for processing
     const complex = constructComplexArray(Array.from(padded));
     const complexFFT = fft(complex);
-    
+
     // Store the complex FFT for later processing
     storedComplexFFT = complexFFT;
-    
+
     // Compute FFT data for visualization
     const freqs: number[] = [];
     const mags: number[] = [];
@@ -56,23 +79,52 @@ const computeFFT = (data: Float32Array, sr: number): FFTData | null => {
       freqs.push((i * sr) / fftSize);
       mags.push(Math.hypot(complexFFT.real[i], complexFFT.imag[i]));
     }
-    
+
     const fftData = { frequencies: freqs, magnitudes: mags };
     storedFFTData = fftData;
     return fftData;
-  } catch (e) {
-    console.error("FFT error:", e);
-    return null;
-  }
-};
+  }, []);
 
-export const useAudioProcessor = (): AudioProcessorResult => {
-  const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [audioData, setAudioData] = useState<Float32Array | null>(null);
-  const [outputData, setOutputData] = useState<Float32Array | null>(null);
-  const [inputFFT, setInputFFT] = useState<FFTData | null>(null);
-  const [outputFFT, setOutputFFT] = useState<FFTData | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
+  /** Compute STFT slices for spectrogram */
+const computeSTFT = useCallback((data: Float32Array, fftSize = 2048, hopSize = 512) => {
+  const slices: Uint8Array[] = [];
+  const hannWindow = new Array(fftSize).fill(0).map((_, i) =>
+    0.5 * (1 - Math.cos((2 * Math.PI * i) / (fftSize - 1)))
+  );
+
+  let maxMag = 1e-12;
+
+  // First pass → find peak magnitude (for normalization)
+  for (let start = 0; start + fftSize <= data.length; start += hopSize) {
+    const frame = data.slice(start, start + fftSize);
+    const windowed = frame.map((v, i) => v * hannWindow[i]);
+    const complexFFT = fft({ real: Array.from(windowed), imag: new Array(fftSize).fill(0) });
+    for (let j = 0; j < fftSize / 2; j++) {
+      const mag = Math.hypot(complexFFT.real[j], complexFFT.imag[j]);
+      maxMag = Math.max(maxMag, mag);
+    }
+  }
+
+  // Second pass → normalized dB conversion
+  for (let start = 0; start + fftSize <= data.length; start += hopSize) {
+    const frame = data.slice(start, start + fftSize);
+    const windowed = frame.map((v, i) => v * hannWindow[i]);
+    const complexFFT = fft({ real: Array.from(windowed), imag: new Array(fftSize).fill(0) });
+
+    const magDbSlice = new Uint8Array(fftSize / 2);
+    for (let j = 0; j < fftSize / 2; j++) {
+      const mag = Math.hypot(complexFFT.real[j], complexFFT.imag[j]);
+      const db = 20 * Math.log10(mag / maxMag + 1e-12); // Normalize vs max
+      const norm = Math.min(255, Math.max(0, Math.floor(((db + 100) / 100) * 255))); // -100dB → 0, 0dB → 255
+      magDbSlice[j] = norm;
+    }
+
+    slices.push(magDbSlice);
+  }
+
+  return slices;
+}, []);
+
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -109,79 +161,138 @@ export const useAudioProcessor = (): AudioProcessorResult => {
       setOutputData(channelData.slice());
 
       const sampleRate = audioContextRef.current.sampleRate;
-      
+
       // Compute FFT and store both visualization data and complex FFT
       const fftResult = computeFFT(channelData, sampleRate);
-      if (fftResult) {
-        setInputFFT(fftResult);
-        setOutputFFT(fftResult);
-      }
+
+      setInputFFT(fftResult);
+      setOutputFFT(fftResult);
+
+      setInputSlices(computeSTFT(channelData));
+      setOutputSlices(computeSTFT(channelData));
 
       toast.success("Audio loaded (mono mix) – matches Librosa");
+
     } catch (error) {
       console.error("Error loading audio:", error);
       toast.error("Failed to load audio file");
     }
-  }, []);
+  }, [computeFFT, computeSTFT]);
 
-  const processAudio = useCallback((ranges: FrequencyRange[]) => {
-  if (!audioData || !audioContextRef.current || !storedComplexFFT) {
-    console.log("❌ Missing data for processing:", {
-      audioData: !!audioData,
-      audioContext: !!audioContextRef.current,
-      storedComplexFFT: !!storedComplexFFT
-    });
-    return;
-  }
-
-  console.log("🎵 Processing audio with frequency ranges:", ranges);
-
-  const sampleRate = audioContextRef.current.sampleRate;
-  const originalLength = audioData.length;
-
-  // Convert FrequencyRange objects to numeric tuples and sort
-  const sortedControls = ranges
-    .map(r => [r.minFreq, r.maxFreq, r.gain] as [number, number, number])
-    .sort((a, b) => a[0] - b[0]);
-
-  const { timeDomain, frequencyDomain } = equalizer(
-    storedComplexFFT,
-    sortedControls,
-    sampleRate
-  );
-
-  const outputArray = new Float32Array(timeDomain.slice(0, originalLength));
-
-  let differences = 0;
-  for (let i = 0; i < Math.min(10, audioData.length); i++) {
-    if (Math.abs(audioData[i] - outputArray[i]) > 0.001) {
-      differences++;
+  const processAudio = useCallback((ranges: [number, number, number][]) => {
+    if (!audioData || !audioContextRef.current || !storedComplexFFT) {
+      console.log("❌ Missing data for processing:", {
+        audioData: !!audioData,
+        audioContext: !!audioContextRef.current,
+        storedComplexFFT: !!storedComplexFFT
+      });
+      return;
     }
-  }
-  console.log(`🔍 Sample comparison: ${differences}/10 samples differ significantly`);
 
-  setOutputData(outputArray);
+    console.log("🎵 Processing audio with frequency ranges:", ranges);
 
-  const fftSize = frequencyDomain.real.length;
-  const freqs: number[] = [];
-  const mags: number[] = [];
-  for (let i = 0; i < fftSize / 2; i++) {
-    freqs.push((i * sampleRate) / fftSize);
-    mags.push(Math.hypot(frequencyDomain.real[i], frequencyDomain.imag[i]));
-  }
+    const sampleRate = audioContextRef.current.sampleRate;
+    const originalLength = audioData.length;
 
-  setOutputFFT({ frequencies: freqs, magnitudes: mags });
+    // Already a tuple list → just sort
+    const sortedControls = [...ranges].sort((a, b) => a[0] - b[0]);
 
-  console.log("✅ Processing complete - output data length:", outputArray.length);
-}, [audioData]);
+    const { timeDomain, frequencyDomain } = equalizer(
+      storedComplexFFT,
+      sortedControls,
+      sampleRate
+    );
+
+    const outputArray = new Float32Array(timeDomain.slice(0, originalLength));
+
+    let differences = 0;
+    for (let i = 0; i < Math.min(10, audioData.length); i++) {
+      if (Math.abs(audioData[i] - outputArray[i]) > 0.001) {
+        differences++;
+      }
+    }
+    console.log(`🔍 Sample comparison: ${differences}/10 samples differ significantly`);
+
+    setOutputData(outputArray);
+
+    // Update STFT for spectrogram
+    setOutputSlices(computeSTFT(outputArray));
+
+    const fftSize = frequencyDomain.real.length;
+    const freqs: number[] = [];
+    const mags: number[] = [];
+    for (let i = 0; i < fftSize / 2; i++) {
+      freqs.push((i * sampleRate) / fftSize);
+      mags.push(Math.hypot(frequencyDomain.real[i], frequencyDomain.imag[i]));
+    }
+
+    setOutputFFT({ frequencies: freqs, magnitudes: mags });
+
+    console.log("✅ Processing complete - output data length:", outputArray.length);
+  }, [audioData, computeSTFT]);
 
 
   const resetOutput = useCallback(() => {
     if (audioData && storedFFTData) {
       setOutputData(audioData.slice());
       setOutputFFT(storedFFTData);
+      setOutputSlices(computeSTFT(audioData));
     }
-  }, [audioData]);
+  }, [audioData, computeSTFT]);
+
+  /** Playback controls */
+const playAudio = useCallback(() => {
+    if (!outputData || !audioContextRef.current) return;
+
+    // Stop previous
+    if (sourceNodeRef.current) {
+      sourceNodeRef.current.stop();
+      sourceNodeRef.current.disconnect();
+    }
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+
+    const ctx = audioContextRef.current;
+    const buffer = ctx.createBuffer(1, outputData.length, ctx.sampleRate);
+    buffer.getChannelData(0).set(outputData);
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+
+    const now = ctx.currentTime;
+    startTimeRef.current = now;
+
+    source.start(now);
+    sourceNodeRef.current = source;
+    setIsPlaying(true);
+
+    const update = () => {
+      const elapsed = ctx.currentTime - startTimeRef.current;
+      const duration = outputData.length / ctx.sampleRate;
+
+      if (elapsed >= duration) {
+        setIsPlaying(false);
+        onPlaybackTimeUpdate?.(0);
+        return;
+      }
+
+      onPlaybackTimeUpdate?.(elapsed);
+      animationFrameRef.current = requestAnimationFrame(update);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(update);
+
+    source.onended = () => {
+      setIsPlaying(false);
+      onPlaybackTimeUpdate?.(0);
+    };
+  }, [outputData, onPlaybackTimeUpdate]);
+
+  const stopAudio = () => {
+    audioContextRef.current?.close();
+    audioContextRef.current = null;
+    setIsPlaying(false);
+  };
 
   const audioBufferToWav = (buffer: AudioBuffer): ArrayBuffer => {
     const length = buffer.length * buffer.numberOfChannels * 2 + 44;
@@ -201,7 +312,7 @@ export const useAudioProcessor = (): AudioProcessorResult => {
     };
 
     setUint32(0x46464952); // RIFF
-    setUint32(length - 8); 
+    setUint32(length - 8);
     setUint32(0x45564157); // WAVE
     setUint32(0x20746d66); // fmt 
     setUint32(16);
@@ -278,6 +389,12 @@ export const useAudioProcessor = (): AudioProcessorResult => {
     outputData,
     inputFFT,
     outputFFT,
+    inputSlices,
+    outputSlices,
+    isPlaying,
+    playAudio,
+    stopAudio,
+    setPlaybackTimeListener: setOnPlaybackTimeUpdate,
     audioContextRef,
     handleFileUpload,
     handleExport,

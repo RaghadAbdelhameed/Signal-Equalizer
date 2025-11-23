@@ -58,6 +58,10 @@ const Equalizer = () => {
     outputData,
     inputFFT,
     outputFFT,
+    inputSlices,
+    outputSlices,
+    isPlaying,
+    setPlaybackTimeListener,
     audioContextRef,
     handleFileUpload,
     handleExport,
@@ -66,12 +70,12 @@ const Equalizer = () => {
   } = useAudioProcessor();
 
   // Default frequencies for generic mode
-  const defaultFrequencies = [20, 250, 1000, 16000];
+  const defaultFrequencies = [250, 1000, 16000];
   const defaultRanges: FrequencyRange[] = defaultFrequencies.map((freq, index) => {
 
     return {
-      minFreq:freq - 32,
-      maxFreq:freq + 32,
+      minFreq: freq - 32,
+      maxFreq: freq + 32,
       gain: 1,
     };
   });
@@ -113,19 +117,19 @@ const Equalizer = () => {
     console.log("=== FREQUENCY RANGES DEBUG ===");
     console.log("Current frequencyRanges:", frequencyRanges);
     console.log("Current sliderValues:", sliderValues);
-    
+
     // Check for duplicates
     const centers = frequencyRanges.map(r => Math.round((r.minFreq + r.maxFreq) / 2));
     const duplicates = centers.filter((item, index) => centers.indexOf(item) !== index);
-    
+
     if (duplicates.length > 0) {
       console.warn("DUPLICATE CENTER FREQUENCIES FOUND:", duplicates);
     }
-    
+
     // Check for overlaps
     for (let i = 0; i < frequencyRanges.length - 1; i++) {
       if (frequencyRanges[i].maxFreq > frequencyRanges[i + 1].minFreq) {
-        console.warn(`OVERLAP DETECTED: Range ${i} max (${frequencyRanges[i].maxFreq}) > Range ${i+1} min (${frequencyRanges[i+1].minFreq})`);
+        console.warn(`OVERLAP DETECTED: Range ${i} max (${frequencyRanges[i].maxFreq}) > Range ${i + 1} min (${frequencyRanges[i + 1].minFreq})`);
       }
     }
   }, [frequencyRanges]);
@@ -151,42 +155,27 @@ const Equalizer = () => {
     console.log("=== GET GAIN CONTROLS ===");
     console.log("Frequency ranges:", frequencyRanges);
 
-    if (config.isGeneric) {
-      // Use stored min/max from frequencyRanges
-      const sortedRanges = [...frequencyRanges].sort((a, b) => a.minFreq - b.minFreq);
-      const controls: [number, number, number][] = sortedRanges.map((range, index) => {
-        const control: [number, number, number] = [
-          range.minFreq,
-          Math.min(range.maxFreq, maxFreqCap),
-          range.gain
-        ];
-        console.log(`Range ${index}: ${control[0]}Hz - ${control[1]}Hz, gain: ${control[2]}`);
-        return control;
-      });
-      return controls;
-    } else {
-      // Auto-compute half-distance ranges for fixed modes
-      const freqLabels = config.sliders;
-      const centers = freqLabels.map((label) => {
-        let freq = parseFloat(label.replace(/[^0-9.]/g, ""));
-        if (label.toLowerCase().includes("k")) {
-          freq *= 1000;
-        }
-        return freq;
-      });
+    // Always use predefined ranges (sorted). Sliders are only UI labels now.
+    const sortedRanges = [...frequencyRanges].sort((a, b) => a.minFreq - b.minFreq);
 
-      const ranges: [number, number, number][] = [];
-      for (let i = 0; i < centers.length; i++) {
-        const minFreq = i === 0 ? 20 : (centers[i-1] + centers[i]) / 2;
-        const maxFreq = i === centers.length - 1 ? maxFreqCap : (centers[i] + centers[i+1]) / 2;
-        const range: [number, number, number] = [minFreq, maxFreq, sliderValues[i]];
-        console.log(`Fixed range ${i}: ${range[0]}Hz - ${range[1]}Hz, gain: ${range[2]}`);
-        ranges.push(range);
-      }
-      
-      return ranges;
-    }
+    return sortedRanges.map((range, index) => {
+      const control: [number, number, number] = [
+        range.minFreq,
+        Math.min(range.maxFreq, maxFreqCap),
+        range.gain
+      ];
+      console.log(`Range ${index}: ${control[0]}Hz - ${control[1]}Hz, gain: ${control[2]}`);
+      return control;
+    });
   };
+
+useEffect(() => {
+  if (setPlaybackTimeListener) {
+    setPlaybackTimeListener((time: number) => {
+      setCurrentTime(time);
+    });
+  }
+}, [setPlaybackTimeListener]);
 
   // Processing effect
   useEffect(() => {
@@ -198,12 +187,12 @@ const Equalizer = () => {
       subMode,
       isAI: config.isAI
     });
-    
+
     if (audioData && !config.isAI && subMode === "equalizer") {
       const sampleRate = audioContextRef.current?.sampleRate || 44100;
       const rangeControls = getGainControls(sampleRate);
       console.log("🎵 Calling processAudio with range controls:", rangeControls);
-      processAudio(frequencyRanges);
+      processAudio(rangeControls);
     } else {
       console.log("⏭️ Skipping processing - conditions not met");
     }
@@ -211,63 +200,63 @@ const Equalizer = () => {
 
   // Simple validation function
   const validateAndFixRanges = (ranges: FrequencyRange[]): FrequencyRange[] => {
-  // 1. Sort ranges by their midpoint frequency
-  const sorted = [...ranges].sort(
-    (a, b) => ((a.minFreq + a.maxFreq) / 2) - ((b.minFreq + b.maxFreq) / 2)
-  );
+    // 1. Sort ranges by their midpoint frequency
+    const sorted = [...ranges].sort(
+      (a, b) => ((a.minFreq + a.maxFreq) / 2) - ((b.minFreq + b.maxFreq) / 2)
+    );
 
-  // 2. Ensure unique midpoints
-  for (let i = 1; i < sorted.length; i++) {
-    const prevMid = (sorted[i - 1].minFreq + sorted[i - 1].maxFreq) / 2;
-    const currMid = (sorted[i].minFreq + sorted[i].maxFreq) / 2;
+    // 2. Ensure unique midpoints
+    for (let i = 1; i < sorted.length; i++) {
+      const prevMid = (sorted[i - 1].minFreq + sorted[i - 1].maxFreq) / 2;
+      const currMid = (sorted[i].minFreq + sorted[i].maxFreq) / 2;
 
-    if (currMid <= prevMid) {
-      const newMid = prevMid + 1; // Increase midpoint by 1 Hz
-      
-      console.warn(
-        `Adjusted midpoint at index ${i}. Old midpoint: ${currMid}, New midpoint: ${newMid}`
-      );
+      if (currMid <= prevMid) {
+        const newMid = prevMid + 1; // Increase midpoint by 1 Hz
 
+        console.warn(
+          `Adjusted midpoint at index ${i}. Old midpoint: ${currMid}, New midpoint: ${newMid}`
+        );
+
+      }
     }
-  }
 
-  console.log("✔ Final ranges (midpoint sorted & unique):", sorted);
-  return sorted;
-};
+    console.log("✔ Final ranges (midpoint sorted & unique):", sorted);
+    return sorted;
+  };
 
 
 
   // CORRECTED handleAddFrequency - FIXED DUPLICATION ISSUE
   const handleAddFrequency = (newRange: FrequencyRange) => {
     console.log("➕ Adding new frequency range:", newRange);
-    
+
     // Round the frequencies to avoid floating point issues
     const roundedRange = {
       minFreq: Math.round(newRange.minFreq),
       maxFreq: Math.round(newRange.maxFreq),
       gain: newRange.gain
     };
-    
+
     console.log("Rounded range:", roundedRange);
-    
+
     // Create a copy of current ranges and add the new one
     const newRanges = [...frequencyRanges, roundedRange];
-    
+
     // Validate and fix any issues
     const validatedRanges = validateAndFixRanges(newRanges);
-    
+
     // Check if we actually added a new range (not a duplicate)
     if (validatedRanges.length === frequencyRanges.length) {
       console.warn("No new range added - likely a duplicate");
       toast.error("Frequency range already exists or is too close to existing range");
       return;
     }
-    
+
     console.log("New ranges: ", validatedRanges)
     setFrequencyRanges(validatedRanges);
     setSliderValues(validatedRanges.map((r) => r.gain));
     setProcessTrigger(prev => prev + 1);
-    
+
     toast.success("Frequency range added");
   };
 
@@ -284,7 +273,7 @@ const Equalizer = () => {
       newRanges[index].gain = value[0];
       setFrequencyRanges(newRanges);
     }
-    
+
     // Trigger processing
     setProcessTrigger(prev => prev + 1);
   };
@@ -301,22 +290,21 @@ const Equalizer = () => {
     toast.success("Settings reset");
   };
 
-  // CORRECTED handleRemoveFrequency - FIXED DUPLICATION ISSUE
   const handleRemoveFrequency = (index: number) => {
     if (frequencyRanges.length <= 2) {
       toast.error("Cannot remove frequency - minimum 2 points required");
       return;
     }
-    
+
     const newRanges = frequencyRanges.filter((_, i) => i !== index);
-    
+
     // Recalculate boundaries using simple validation
     const validatedRanges = validateAndFixRanges(newRanges);
-    
+
     setFrequencyRanges(validatedRanges);
     setSliderValues(validatedRanges.map((r) => r.gain));
     setProcessTrigger(prev => prev + 1);
-    
+
     toast.success("Frequency point removed");
   };
 
@@ -325,12 +313,12 @@ const Equalizer = () => {
       // For generic mode, create ranges from preset frequencies
       const ranges: FrequencyRange[] = [];
       for (let i = 0; i < preset.frequencies.length; i++) {
-        const minFreq = i === 0 ? 20 : (preset.frequencies[i-1] + preset.frequencies[i]) / 2;
-        const maxFreq = i === preset.frequencies.length - 1 ? 20000 : (preset.frequencies[i] + preset.frequencies[i+1]) / 2;
-        ranges.push({ 
+        const minFreq = i === 0 ? 20 : (preset.frequencies[i - 1] + preset.frequencies[i]) / 2;
+        const maxFreq = i === preset.frequencies.length - 1 ? 20000 : (preset.frequencies[i] + preset.frequencies[i + 1]) / 2;
+        ranges.push({
           minFreq: Math.round(minFreq),
           maxFreq: Math.round(maxFreq),
-          gain: preset.gains[i] 
+          gain: preset.gains[i]
         });
       }
       setFrequencyRanges(ranges);
@@ -390,9 +378,9 @@ const Equalizer = () => {
   );
 
   const renderEqualizerControls = () => (
-    <EqualizerControls 
-      labels={config.sliders} 
-      values={sliderValues} 
+    <EqualizerControls
+      labels={config.sliders}
+      values={sliderValues}
       onChange={handleSliderChange}
       onRemove={config.isGeneric ? handleRemoveFrequency : undefined}
     />
@@ -608,8 +596,22 @@ const Equalizer = () => {
 
           {showSpectrograms && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in">
-              <Spectrogram title="Input Spectrogram" data={audioData} color="cyan" />
-              <Spectrogram title="Output Spectrogram" data={outputData} color="magenta" />
+              <Spectrogram
+                title="Input Spectrogram"
+                stftSlices={inputSlices}
+                currentTime={currentTime}
+                duration={audioData ? audioData.length / (audioContextRef.current?.sampleRate || 44100) : undefined}
+                sampleRate={audioContextRef.current?.sampleRate}
+                color="cyan"
+              />
+              <Spectrogram
+                title="Output Spectrogram"
+                stftSlices={outputSlices}
+                currentTime={currentTime}
+                duration={outputData ? outputData.length / (audioContextRef.current?.sampleRate || 44100) : undefined}
+                sampleRate={audioContextRef.current?.sampleRate}
+                color="magenta"
+              />
             </div>
           )}
         </div>
