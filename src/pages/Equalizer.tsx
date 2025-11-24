@@ -169,13 +169,13 @@ const Equalizer = () => {
     });
   };
 
-useEffect(() => {
-  if (setPlaybackTimeListener) {
-    setPlaybackTimeListener((time: number) => {
-      setCurrentTime(time);
-    });
-  }
-}, [setPlaybackTimeListener]);
+  useEffect(() => {
+    if (setPlaybackTimeListener) {
+      setPlaybackTimeListener((time: number) => {
+        setCurrentTime(time);
+      });
+    }
+  }, [setPlaybackTimeListener]);
 
   // Processing effect
   useEffect(() => {
@@ -356,7 +356,7 @@ useEffect(() => {
   };
 
   const renderEqualizerHeader = (showAddButton: boolean) => (
-    <div className="flex items-center justify-between mb-4">
+    <div className="flex items-center justify-between ">
       <h3 className="text-lg font-semibold">Equalizer Controls</h3>
       <div className="flex items-center gap-2">
         <Button variant="outline" size="sm" onClick={handleReset}>
@@ -407,7 +407,7 @@ useEffect(() => {
     mainControls = (
       <Card className="p-6 bg-card border-border">
         <Tabs value={subMode} onValueChange={(v) => setSubMode(v as "equalizer" | "ai")}>
-          <TabsList className="grid w-full grid-cols-2 mb-6">
+          <TabsList className="grid w-full grid-cols-2 mb-3">
             <TabsTrigger value="equalizer">Equalizer Mode</TabsTrigger>
             <TabsTrigger value="ai">AI Separation</TabsTrigger>
           </TabsList>
@@ -424,7 +424,7 @@ useEffect(() => {
   } else if (config.isAI) {
     const separationMode = mode === "ai-musical" ? "musical" : "human";
     mainControls = (
-      <Card className="p-6 bg-card border-border">
+      <Card className="px-3 py-0 h-[300px] bg-card border-border">
         <AudioSourceSeparation
           mode={separationMode}
           sources={separationMode === "musical" ? musicalSources : humanSources}
@@ -447,6 +447,90 @@ useEffect(() => {
       </Card>
     );
   }
+  const renderSignalViewers = () => (
+    <div className="space-y-6">
+      <SignalViewer
+        title="Input Signal"
+        data={audioData}
+        color="cyan"
+        zoom={zoom}
+        pan={pan}
+        onZoomChange={setZoom}
+        onPanChange={setPan}
+        renderProps={{ sampleRate: audioContextRef.current?.sampleRate || 44100 }}
+        audioContextRef={audioContextRef}
+        currentTime={currentTime}
+        onCurrentTimeChange={setCurrentTime}
+        playbackSpeed={playbackSpeed}
+        onPlaybackSpeedChange={setPlaybackSpeed}
+      />
+      <SignalViewer
+        title="Output Signal"
+        data={outputData}
+        color="magenta"
+        zoom={zoom}
+        pan={pan}
+        onZoomChange={setZoom}
+        onPanChange={setPan}
+        renderProps={{ sampleRate: audioContextRef.current?.sampleRate || 44100 }}
+        audioContextRef={audioContextRef}
+        currentTime={currentTime}
+        onCurrentTimeChange={setCurrentTime}
+        playbackSpeed={playbackSpeed}
+        onPlaybackSpeedChange={setPlaybackSpeed}
+      />
+    </div>
+  );
+
+  const renderFFTViewers = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Frequency Spectrum (FFT)</h2>
+        <div className="flex items-center gap-2">
+          <Switch checked={useAudiogramScale} onCheckedChange={setUseAudiogramScale} id="audiogram-scale" />
+          <Label htmlFor="audiogram-scale" className="text-sm cursor-pointer whitespace-nowrap">
+            Audiogram
+          </Label>
+        </div>
+      </div>
+
+      {/** AI = stacked, Equalizer = side-by-side */}
+      {(config.isAI || (mode === "music" && subMode === "ai")) ? (
+        <>
+          <FFTViewer {...{ title: "Input Signal", color: "cyan", fftData: inputFFT, zoom, pan, onZoomChange: setZoom, onPanChange: setPan, sampleRate: audioContextRef.current?.sampleRate || 44100, useAudiogramScale }} />
+          <FFTViewer {...{ title: "Output Signal", color: "magenta", fftData: outputFFT, zoom, pan, onZoomChange: setZoom, onPanChange: setPan, sampleRate: audioContextRef.current?.sampleRate || 44100, useAudiogramScale }} />
+        </>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <FFTViewer {...{ title: "Input Signal", color: "cyan", fftData: inputFFT, zoom, pan, onZoomChange: setZoom, onPanChange: setPan, sampleRate: audioContextRef.current?.sampleRate || 44100, useAudiogramScale }} />
+          <FFTViewer {...{ title: "Output Signal", color: "magenta", fftData: outputFFT, zoom, pan, onZoomChange: setZoom, onPanChange: setPan, sampleRate: audioContextRef.current?.sampleRate || 44100, useAudiogramScale }} />
+        </div>
+      )}
+    </div>
+  );
+
+  const renderSpectrograms = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Spectrograms</h2>
+        <div className="flex items-center gap-2">
+          <Switch checked={showSpectrograms} onCheckedChange={setShowSpectrograms} id="show-spectrograms-global" />
+          <Label htmlFor="show-spectrograms-global" className="text-sm cursor-pointer">
+            Show Spectrograms
+          </Label>
+        </div>
+      </div>
+
+      {showSpectrograms && (
+        <div className={`${config.isAI || (mode === "music" && subMode === "ai") ? "space-y-6" : "grid grid-cols-1 lg:grid-cols-2 gap-4"
+          } animate-fade-in`}>
+          <Spectrogram title="Input Spectrogram" stftSlices={inputSlices} currentTime={currentTime} duration={audioData ? audioData.length / (audioContextRef.current?.sampleRate || 44100) : undefined} sampleRate={audioContextRef.current?.sampleRate} color="cyan" />
+          <Spectrogram title="Output Spectrogram" stftSlices={outputSlices} currentTime={currentTime} duration={outputData ? outputData.length / (audioContextRef.current?.sampleRate || 44100) : undefined} sampleRate={audioContextRef.current?.sampleRate} color="magenta" />
+        </div>
+      )}
+    </div>
+  );
+
 
   return (
     <div className="min-h-screen bg-background">
@@ -498,123 +582,35 @@ useEffect(() => {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6 space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {mainControls}
-          <div className="flex flex-col gap-4">
-            <SignalViewer
-              title="Input Signal"
-              data={audioData}
-              color="cyan"
-              zoom={zoom}
-              pan={pan}
-              onZoomChange={setZoom}
-              onPanChange={setPan}
-              renderProps={{ sampleRate: audioContextRef.current?.sampleRate || 44100 }}
-              audioContextRef={audioContextRef}
-              currentTime={currentTime}
-              onCurrentTimeChange={setCurrentTime}
-              playbackSpeed={playbackSpeed}
-              onPlaybackSpeedChange={setPlaybackSpeed}
-            />
+      <main className="container mx-auto px-4 py-4">
+        {/* Conditional Layout: AI modes have graphs on right, equalizer mode has graphs below */}
+        {(config.isAI || (mode === "music" && subMode === "ai") || (mode === "voices" && subMode === "ai")) ? (
+          // AI Separation Mode: Side-by-side layout
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left Column: Controls */}
+            <div className="flex flex-col">
+              {mainControls}
+            </div>
 
-            <SignalViewer
-              title="Output Signal"
-              data={outputData}
-              color="magenta"
-              zoom={zoom}
-              pan={pan}
-              onZoomChange={setZoom}
-              onPanChange={setPan}
-              renderProps={{ sampleRate: audioContextRef.current?.sampleRate || 44100 }}
-              audioContextRef={audioContextRef}
-              currentTime={currentTime}
-              onCurrentTimeChange={setCurrentTime}
-              playbackSpeed={playbackSpeed}
-              onPlaybackSpeedChange={setPlaybackSpeed}
-            />
-          </div>
-        </div>
-
-        {/* FFT Section */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between mx-4">
-            <h2 className="text-lg font-semibold">Frequency Spectrum (FFT)</h2>
-            <div className="flex items-center gap-2 ml-auto">
-              <Switch
-                checked={useAudiogramScale}
-                onCheckedChange={setUseAudiogramScale}
-                id="audiogram-scale"
-              />
-              <Label htmlFor="audiogram-scale" className="text-sm cursor-pointer whitespace-nowrap">
-                Audiogram
-              </Label>
+            {/* Right Column: All Visualizations */}
+            <div className="flex flex-col gap-4">
+              {renderSignalViewers()}
+              {renderFFTViewers()}
+              {renderSpectrograms()}
             </div>
           </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <FFTViewer
-              title="Input Signal"
-              color="cyan"
-              fftData={inputFFT}
-              zoom={zoom}
-              pan={pan}
-              onZoomChange={setZoom}
-              onPanChange={setPan}
-              sampleRate={audioContextRef.current?.sampleRate || 44100}
-              useAudiogramScale={useAudiogramScale}
-            />
-            <FFTViewer
-              title="Output Signal"
-              color="magenta"
-              fftData={outputFFT}
-              zoom={zoom}
-              pan={pan}
-              onZoomChange={setZoom}
-              onPanChange={setPan}
-              sampleRate={audioContextRef.current?.sampleRate || 44100}
-              useAudiogramScale={useAudiogramScale}
-            />
-          </div>
-        </div>
-
-        {/* Spectrograms Section */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between mx-4">
-            <h2 className="text-lg font-semibold">Spectrograms</h2>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={showSpectrograms}
-                onCheckedChange={setShowSpectrograms}
-                id="show-spectrograms-global"
-              />
-              <Label htmlFor="show-spectrograms-global" className="text-sm cursor-pointer">
-                Show Spectrograms
-              </Label>
+        ) : (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div>{mainControls}</div>
+              <div>{renderSignalViewers()}</div>
             </div>
+
+            {renderFFTViewers()}
+            {renderSpectrograms()}
           </div>
 
-          {showSpectrograms && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in">
-              <Spectrogram
-                title="Input Spectrogram"
-                stftSlices={inputSlices}
-                currentTime={currentTime}
-                duration={audioData ? audioData.length / (audioContextRef.current?.sampleRate || 44100) : undefined}
-                sampleRate={audioContextRef.current?.sampleRate}
-                color="cyan"
-              />
-              <Spectrogram
-                title="Output Spectrogram"
-                stftSlices={outputSlices}
-                currentTime={currentTime}
-                duration={outputData ? outputData.length / (audioContextRef.current?.sampleRate || 44100) : undefined}
-                sampleRate={audioContextRef.current?.sampleRate}
-                color="magenta"
-              />
-            </div>
-          )}
-        </div>
+        )}
       </main>
 
       {/* Dialogs */}

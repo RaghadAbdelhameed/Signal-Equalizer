@@ -40,7 +40,7 @@ export const AudioSourceSeparation = ({
   onPlaybackSpeedChange,
 }: AudioSourceSeparationProps) => {
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
@@ -57,11 +57,11 @@ export const AudioSourceSeparation = ({
         </Badge>
       </div>
 
-      <div className="grid gap-4">
+      <div className="grid gap-4 ">
         {sources.map((source) => (
           <Card 
             key={source.id} 
-            className="p-4 bg-card/50 backdrop-blur-sm border-border/50 hover:border-primary/30 transition-all duration-300"
+            className="p-4 h-[320px] bg-card/50 backdrop-blur-sm border-border/50 hover:border-primary/30 transition-all duration-300"
           >
             <div className="space-y-4">
               <div className="flex items-center justify-between">
