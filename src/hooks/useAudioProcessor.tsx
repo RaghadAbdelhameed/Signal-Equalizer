@@ -50,6 +50,7 @@ export const useAudioProcessor = (): AudioProcessorResult => {
   const [inputSlices, setInputSlices] = useState<Uint8Array[]>([]);
   const [outputSlices, setOutputSlices] = useState<Uint8Array[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [inputMaxMag, setInputMaxMag] = useState(0);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
@@ -86,44 +87,48 @@ export const useAudioProcessor = (): AudioProcessorResult => {
   }, []);
 
   /** Compute STFT slices for spectrogram */
-const computeSTFT = useCallback((data: Float32Array, fftSize = 2048, hopSize = 512) => {
-  const slices: Uint8Array[] = [];
-  const hannWindow = new Array(fftSize).fill(0).map((_, i) =>
-    0.5 * (1 - Math.cos((2 * Math.PI * i) / (fftSize - 1)))
-  );
+  const computeSTFT = useCallback((data: Float32Array, fftSize = 2048, hopSize = 512, refMaxMag?: number) => {
+    const slices: Uint8Array[] = [];
+    const hannWindow = new Array(fftSize).fill(0).map((_, i) =>
+      0.5 * (1 - Math.cos((2 * Math.PI * i) / (fftSize - 1)))
+    );
 
-  let maxMag = 1e-12;
+    let maxMag = refMaxMag ?? 1e-12;  // Use provided ref or compute own
 
-  // First pass → find peak magnitude (for normalization)
-  for (let start = 0; start + fftSize <= data.length; start += hopSize) {
-    const frame = data.slice(start, start + fftSize);
-    const windowed = frame.map((v, i) => v * hannWindow[i]);
-    const complexFFT = fft({ real: Array.from(windowed), imag: new Array(fftSize).fill(0) });
-    for (let j = 0; j < fftSize / 2; j++) {
-      const mag = Math.hypot(complexFFT.real[j], complexFFT.imag[j]);
-      maxMag = Math.max(maxMag, mag);
-    }
-  }
-
-  // Second pass → normalized dB conversion
-  for (let start = 0; start + fftSize <= data.length; start += hopSize) {
-    const frame = data.slice(start, start + fftSize);
-    const windowed = frame.map((v, i) => v * hannWindow[i]);
-    const complexFFT = fft({ real: Array.from(windowed), imag: new Array(fftSize).fill(0) });
-
-    const magDbSlice = new Uint8Array(fftSize / 2);
-    for (let j = 0; j < fftSize / 2; j++) {
-      const mag = Math.hypot(complexFFT.real[j], complexFFT.imag[j]);
-      const db = 20 * Math.log10(mag / maxMag + 1e-12); // Normalize vs max
-      const norm = Math.min(255, Math.max(0, Math.floor(((db + 100) / 100) * 255))); // -100dB → 0, 0dB → 255
-      magDbSlice[j] = norm;
+    if (!refMaxMag) {
+      // First pass → find peak magnitude (for normalization) only if no ref provided
+      for (let start = 0; start + fftSize <= data.length; start += hopSize) {
+        const frame = data.slice(start, start + fftSize);
+        const windowed = frame.map((v, i) => v * hannWindow[i]);
+        const complexFFT = fft({ real: Array.from(windowed), imag: new Array(fftSize).fill(0) });
+        for (let j = 0; j < fftSize / 2; j++) {
+          const mag = Math.hypot(complexFFT.real[j], complexFFT.imag[j]);
+          maxMag = Math.max(maxMag, mag);
+        }
+      }
     }
 
-    slices.push(magDbSlice);
-  }
+    // Second pass → normalized dB conversion (allow >0 dB with ref)
+    for (let start = 0; start + fftSize <= data.length; start += hopSize) {
+      const frame = data.slice(start, start + fftSize);
+      const windowed = frame.map((v, i) => v * hannWindow[i]);
+      const complexFFT = fft({ real: Array.from(windowed), imag: new Array(fftSize).fill(0) });
 
-  return slices;
-}, []);
+      const magDbSlice = new Uint8Array(fftSize / 2);
+      for (let j = 0; j < fftSize / 2; j++) {
+        const mag = Math.hypot(complexFFT.real[j], complexFFT.imag[j]);
+        const db = 20 * Math.log10(mag / maxMag + 1e-12); // Normalize vs max (ref or own)
+        // Adjusted scaling: -120dB → 0, +20dB → 255 (headroom for boosts up to ×10 / +20dB)
+        const norm = Math.min(255, Math.max(0, Math.floor(((db + 120) / 140) * 255)));
+        magDbSlice[j] = norm;
+      }
+
+      slices.push(magDbSlice);
+    }
+
+    // Return slices AND computed maxMag (for passing as ref later)
+    return { slices, maxMag };
+  }, []);
 
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -168,8 +173,10 @@ const computeSTFT = useCallback((data: Float32Array, fftSize = 2048, hopSize = 5
       setInputFFT(fftResult);
       setOutputFFT(fftResult);
 
-      setInputSlices(computeSTFT(channelData));
-      setOutputSlices(computeSTFT(channelData));
+      const inputSTFT = computeSTFT(channelData);
+      setInputSlices(inputSTFT.slices);
+      setInputMaxMag(inputSTFT.maxMag);
+      setOutputSlices(inputSTFT.slices);  // Initial output same as input
 
       toast.success("Audio loaded (mono mix) – matches Librosa");
 
@@ -216,7 +223,8 @@ const computeSTFT = useCallback((data: Float32Array, fftSize = 2048, hopSize = 5
     setOutputData(outputArray);
 
     // Update STFT for spectrogram
-    setOutputSlices(computeSTFT(outputArray));
+    const outputSTFT = computeSTFT(outputArray, 2048, 512, inputMaxMag);
+    setOutputSlices(outputSTFT.slices);
 
     const fftSize = frequencyDomain.real.length;
     const freqs: number[] = [];
@@ -229,16 +237,18 @@ const computeSTFT = useCallback((data: Float32Array, fftSize = 2048, hopSize = 5
     setOutputFFT({ frequencies: freqs, magnitudes: mags });
 
     console.log("✅ Processing complete - output data length:", outputArray.length);
-  }, [audioData, computeSTFT]);
+  }, [audioData, computeSTFT, inputMaxMag]);
 
 
   const resetOutput = useCallback(() => {
     if (audioData && storedFFTData) {
       setOutputData(audioData.slice());
       setOutputFFT(storedFFTData);
-      setOutputSlices(computeSTFT(audioData));
+      // For reset, recompute with input ref or copy slices directly
+      const resetSTFT = computeSTFT(audioData, 2048, 512, inputMaxMag);
+      setOutputSlices(resetSTFT.slices);
     }
-  }, [audioData, computeSTFT]);
+  }, [audioData, computeSTFT, inputMaxMag]);
 
   /** Playback controls */
 const playAudio = useCallback(() => {

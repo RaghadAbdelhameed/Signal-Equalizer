@@ -10,6 +10,7 @@ interface SignalViewerProps {
   color: string;
   zoom?: number;
   pan?: number;
+  height?: number;
   onZoomChange?: (zoom: number) => void;
   onPanChange?: (pan: number) => void;
   render?: (
@@ -35,6 +36,7 @@ const SignalViewer = ({
   color,
   zoom = 1,
   pan = 0,
+  height,
   onZoomChange,
   onPanChange,
   render,
@@ -292,9 +294,9 @@ const SignalViewer = ({
       <div className="relative bg-black/50 rounded-lg overflow-hidden cursor-move">
         <canvas
           ref={canvasRef}
-          width={800}
-          height={200}
-          className="w-full h-auto"
+    width={800}
+    height={height || 200}
+    className="w-full h-full"
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}

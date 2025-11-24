@@ -1,4 +1,3 @@
-// FFTViewer.tsx
 import React, { useRef, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +18,7 @@ interface FFTViewerProps {
   sampleRate?: number;
   zoom?: number;
   pan?: number;
+  height?: number;
   onZoomChange?: (zoom: number) => void;
   onPanChange?: (pan: number) => void;
   useAudiogramScale?: boolean;
@@ -32,6 +32,7 @@ const FFTViewer: React.FC<FFTViewerProps> = ({
   sampleRate = 44100,
   zoom = 1,
   pan = 0,
+  height,
   onZoomChange,
   onPanChange,
   useAudiogramScale = false,
@@ -87,6 +88,8 @@ const FFTViewer: React.FC<FFTViewerProps> = ({
       const f = result.frequencies[i];
       if (f < visibleStart || f > visibleEnd) continue;
 
+      // Y-axis (magnitude) is always normalized per-plot
+      // Boosts increase overall maxMag, so unchanged freqs appear lower relatively in the graph
       const mag = result.magnitudes[i] / maxMag;
       const y = height - (Math.sqrt(mag) * height * 0.94) - 6;
 
@@ -208,9 +211,9 @@ const FFTViewer: React.FC<FFTViewerProps> = ({
       <div className="relative bg-black/50 rounded-lg overflow-hidden cursor-move select-none">
         <canvas
           ref={canvasRef}
-          width={900}
-          height={300}
-          className="w-full h-auto"
+  width={900}
+  height={height || 300}
+  className="w-full h-full"
           style={{ imageRendering: "crisp-edges" }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}

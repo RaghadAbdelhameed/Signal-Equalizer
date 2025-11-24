@@ -309,27 +309,11 @@ const Equalizer = () => {
   };
 
   const handleLoadPreset = (preset: EqualizerPreset) => {
-    if (config.isGeneric && preset.frequencies && preset.gains) {
-      // For generic mode, create ranges from preset frequencies
-      const ranges: FrequencyRange[] = [];
-      for (let i = 0; i < preset.frequencies.length; i++) {
-        const minFreq = i === 0 ? 20 : (preset.frequencies[i - 1] + preset.frequencies[i]) / 2;
-        const maxFreq = i === preset.frequencies.length - 1 ? 20000 : (preset.frequencies[i] + preset.frequencies[i + 1]) / 2;
-        ranges.push({
-          minFreq: Math.round(minFreq),
-          maxFreq: Math.round(maxFreq),
-          gain: preset.gains[i]
-        });
-      }
-      setFrequencyRanges(ranges);
-      setSliderValues(preset.gains);
-    } else {
-      // For fixed modes, just set the gains
-      setSliderValues(preset.gains || Array(sliderValues.length).fill(1));
-    }
-    setProcessTrigger(prev => prev + 1);
-    toast.success("Preset loaded");
-  };
+  setFrequencyRanges(preset.ranges);
+  setSliderValues(preset.ranges.map(r => r.gain));
+  setProcessTrigger(prev => prev + 1);
+  toast.success(`Loaded: ${preset.name}`);
+};
 
   const handleMusicalVolumeChange = (id: string, volume: number) => {
     setMusicalSources((prev) =>
@@ -356,7 +340,7 @@ const Equalizer = () => {
   };
 
   const renderEqualizerHeader = (showAddButton: boolean) => (
-    <div className="flex items-center justify-between ">
+    <div className="flex items-center justify-between">
       <h3 className="text-lg font-semibold">Equalizer Controls</h3>
       <div className="flex items-center gap-2">
         <Button variant="outline" size="sm" onClick={handleReset}>
@@ -631,12 +615,11 @@ const Equalizer = () => {
       )}
 
       <PresetManager
-        open={showPresetManager}
-        onOpenChange={setShowPresetManager}
-        currentFrequencies={frequencyRanges.map((r) => Math.round((r.minFreq + r.maxFreq) / 2))}
-        currentGains={sliderValues}
-        onLoad={handleLoadPreset}
-      />
+  open={showPresetManager}
+  onOpenChange={setShowPresetManager}
+  currentRanges={frequencyRanges}
+  onLoad={handleLoadPreset}
+/>
     </div>
   );
 };

@@ -2,10 +2,9 @@ import { useState } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,30 +16,35 @@ import { Save, Download, Upload, Trash2 } from "lucide-react";
 
 export interface EqualizerPreset {
   name: string;
-  frequencies: number[];
-  gains: number[];
+  ranges: { minFreq: number; maxFreq: number; gain: number }[];
   createdAt: string;
+  version?: number; // optional, for future compatibility
 }
 
 interface PresetManagerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  currentFrequencies: number[];
-  currentGains: number[];
+  currentRanges: { minFreq: number; maxFreq: number; gain: number }[];
   onLoad: (preset: EqualizerPreset) => void;
 }
 
 const PresetManager = ({
   open,
   onOpenChange,
-  currentFrequencies,
-  currentGains,
+  currentRanges,
   onLoad,
 }: PresetManagerProps) => {
   const [presetName, setPresetName] = useState("");
   const [presets, setPresets] = useState<EqualizerPreset[]>(() => {
-    const saved = localStorage.getItem("equalizer-presets");
-    return saved ? JSON.parse(saved) : [];
+    const saved = localStorage.getItem("equalizer-presets-v2");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return [];
+      }
+    }
+    return [];
   });
   const [mode, setMode] = useState<"save" | "load">("save");
 
@@ -52,58 +56,60 @@ const PresetManager = ({
 
     const newPreset: EqualizerPreset = {
       name: presetName.trim(),
-      frequencies: currentFrequencies,
-      gains: currentGains,
+      ranges: currentRanges.map(r => ({ ...r })), // deep copy
       createdAt: new Date().toISOString(),
+      version: 2,
     };
 
-    const updatedPresets = [...presets, newPreset];
-    setPresets(updatedPresets);
-    localStorage.setItem("equalizer-presets", JSON.stringify(updatedPresets));
+    const updated = [...presets.filter(p => p.name !== newPreset.name), newPreset];
+    setPresets(updated);
+    localStorage.setItem("equalizer-presets-v2", JSON.stringify(updated));
 
-    toast.success(`Saved preset: ${newPreset.name}`);
+    toast.success(`Saved: ${newPreset.name}`);
     setPresetName("");
   };
 
   const handleLoad = (preset: EqualizerPreset) => {
     onLoad(preset);
     onOpenChange(false);
-    toast.success(`Loaded preset: ${preset.name}`);
+    toast.success(`Loaded: ${preset.name}`);
   };
 
   const handleDelete = (index: number) => {
-    const updatedPresets = presets.filter((_, i) => i !== index);
-    setPresets(updatedPresets);
-    localStorage.setItem("equalizer-presets", JSON.stringify(updatedPresets));
+    const updated = presets.filter((_, i) => i !== index);
+    setPresets(updated);
+    localStorage.setItem("equalizer-presets-v2", JSON.stringify(updated));
     toast.success("Preset deleted");
   };
 
   const handleExport = (preset: EqualizerPreset) => {
-    const dataStr = JSON.stringify(preset, null, 2);
-    const dataUri = "data:application/json;charset=utf-8," + encodeURIComponent(dataStr);
-    const exportFileDefaultName = `${preset.name.replace(/\s+/g, "_")}.json`;
-
-    const linkElement = document.createElement("a");
-    linkElement.setAttribute("href", dataUri);
-    linkElement.setAttribute("download", exportFileDefaultName);
-    linkElement.click();
+    const data = JSON.stringify(preset, null, 2);
+    const blob = new Blob([data], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${preset.name.replace(/\s+/g, "_")}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
     toast.success("Preset exported");
   };
 
-  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = (ev) => {
       try {
-        const preset = JSON.parse(e.target?.result as string) as EqualizerPreset;
-        const updatedPresets = [...presets, preset];
-        setPresets(updatedPresets);
-        localStorage.setItem("equalizer-presets", JSON.stringify(updatedPresets));
-        toast.success(`Imported preset: ${preset.name}`);
-      } catch (error) {
-        toast.error("Failed to import preset");
+        const preset = JSON.parse(ev.target?.result as string) as EqualizerPreset;
+        if (!preset.ranges || !Array.isArray(preset.ranges)) throw new Error("Invalid format");
+
+        const updated = [...presets, preset];
+        setPresets(updated);
+        localStorage.setItem("equalizer-presets-v2", JSON.stringify(updated));
+        toast.success(`Imported: ${preset.name}`);
+      } catch (err) {
+        toast.error("Invalid preset file");
       }
     };
     reader.readAsText(file);
@@ -113,127 +119,70 @@ const PresetManager = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>Equalizer Presets</DialogTitle>
+          <DialogTitle>Presets (Full Ranges)</DialogTitle>
           <DialogDescription>
-            Save your custom equalizer settings or load previously saved presets.
+            Save and load complete frequency band settings (min/max + gain)
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex gap-2 mb-4">
-          <Button
-            variant={mode === "save" ? "default" : "outline"}
-            onClick={() => setMode("save")}
-            className="flex-1"
-          >
-            <Save className="h-4 w-4 mr-2" />
-            Save New
+          <Button variant={mode === "save" ? "default" : "outline"} onClick={() => setMode("save")} className="flex-1">
+            <Save className="h-4 w-4 mr-2" /> Save New
           </Button>
-          <Button
-            variant={mode === "load" ? "default" : "outline"}
-            onClick={() => setMode("load")}
-            className="flex-1"
-          >
-            <Upload className="h-4 w-4 mr-2" />
-            Load Preset
+          <Button variant={mode === "load" ? "default" : "outline"} onClick={() => setMode("load")} className="flex-1">
+            <Upload className="h-4 w-4 mr-2" /> Load
           </Button>
         </div>
 
         {mode === "save" ? (
           <div className="space-y-4">
-            <div className="grid gap-2">
-              <Label htmlFor="preset-name">Preset Name</Label>
+            <div>
+              <Label>Preset Name</Label>
               <Input
-                id="preset-name"
-                placeholder="e.g., Raghad's Equalizer"
+                placeholder="My Vocal Boost"
                 value={presetName}
                 onChange={(e) => setPresetName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSave()}
               />
             </div>
-            <div className="bg-muted/50 p-3 rounded-lg text-sm">
-              <p className="font-medium mb-1">Current Settings:</p>
-              <p className="text-muted-foreground">
-                {currentFrequencies.length} frequency bands configured
-              </p>
-            </div>
-            <Button onClick={handleSave} className="w-full">
-              <Save className="h-4 w-4 mr-2" />
-              Save Preset
-            </Button>
+            <Button onClick={handleSave} className="w-full">Save Preset</Button>
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => document.getElementById("preset-import")?.click()}
-                className="flex-1"
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                Import File
-              </Button>
-              <input
-                id="preset-import"
-                type="file"
-                accept=".json"
-                className="hidden"
-                onChange={handleImport}
-              />
-            </div>
+            <Button variant="outline" size="sm" onClick={() => document.getElementById("import-preset")?.click()} className="w-full">
+              <Upload className="h-4 w-4 mr-2" /> Import .json
+            </Button>
+            <input id="import-preset" type="file" accept=".json" className="hidden" onChange={handleImport} />
 
-            <ScrollArea className="h-[300px]">
+            <ScrollArea className="h-80">
               {presets.length === 0 ? (
-                <div className="text-center text-muted-foreground py-8">
-                  No saved presets yet
-                </div>
+                <p className="text-center text-muted-foreground py-8">No presets saved yet</p>
               ) : (
-                <div className="space-y-2">
-                  {presets.map((preset, index) => (
-                    <Card
-                      key={index}
-                      className="p-4 hover:bg-accent/50 transition-colors"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h4 className="font-medium">{preset.name}</h4>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {preset.frequencies.length} bands •{" "}
-                            {new Date(preset.createdAt).toLocaleDateString()}
+                <div className="space-y-3">
+                  {presets.map((p, i) => (
+                    <Card key={i} className="p-4">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="font-semibold">{p.name}</h4>
+                          <p className="text-xs text-muted-foreground">
+                            {p.ranges.length} bands • {new Date(p.createdAt).toLocaleDateString()}
                           </p>
                           <div className="flex flex-wrap gap-1 mt-2">
-                            {preset.frequencies.map((freq, i) => (
-                              <span
-                                key={i}
-                                className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded"
-                              >
-                                {freq >= 1000 ? `${(freq / 1000).toFixed(1)}k` : freq}Hz
+                            {p.ranges.map((r, j) => (
+                              <span key={j} className="text-xs bg-primary/10 px-2 py-0.5 rounded">
+                                {r.minFreq}-{r.maxFreq}Hz ×{r.gain.toFixed(2)}
                               </span>
                             ))}
                           </div>
                         </div>
-                        <div className="flex gap-1 ml-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleLoad(preset)}
-                            title="Load preset"
-                          >
+                        <div className="flex gap-1">
+                          <Button size="icon" variant="ghost" onClick={() => handleLoad(p)} title="Load">
                             <Upload className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleExport(preset)}
-                            title="Export preset"
-                          >
+                          <Button size="icon" variant="ghost" onClick={() => handleExport(p)} title="Export">
                             <Download className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(index)}
-                            title="Delete preset"
-                          >
+                          <Button size="icon" variant="ghost" onClick={() => handleDelete(i)} title="Delete">
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>
