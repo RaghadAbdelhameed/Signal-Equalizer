@@ -343,19 +343,16 @@ const Equalizer = () => {
     <div className="flex items-center justify-between">
       <h3 className="text-lg font-semibold">Equalizer Controls</h3>
       <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" onClick={handleReset}>
-          <RotateCcw className="h-3 w-3 mr-1.5" />
-          Reset
+        <Button variant="outline" size="icon" onClick={handleReset} title="Reset">
+          <RotateCcw className="h-4 w-4" />
         </Button>
         {showAddButton && (
-          <Button variant="outline" size="sm" onClick={() => setShowAddFrequency(true)}>
-            <Plus className="h-3 w-3 mr-1.5" />
-            Add Frequency
+          <Button variant="outline" size="icon" onClick={() => setShowAddFrequency(true)} title="Add Frequency">
+            <Plus className="h-4 w-4" />
           </Button>
         )}
-        <Button variant="outline" size="sm" onClick={() => setShowPresetManager(true)}>
-          <Save className="h-3 w-3 mr-1.5" />
-          Presets
+        <Button variant="outline" size="icon" onClick={() => setShowPresetManager(true)} title="Presets">
+          <Save className="h-4 w-4" />
         </Button>
       </div>
     </div>
@@ -432,7 +429,7 @@ const Equalizer = () => {
     );
   }
   const renderSignalViewers = () => (
-    <div className="space-y-6">
+    <div className="grid grid-cols-2 gap-4">
       <SignalViewer
         title="Input Signal"
         data={audioData}
@@ -485,7 +482,7 @@ const Equalizer = () => {
           <FFTViewer {...{ title: "Output Signal", color: "magenta", fftData: outputFFT, zoom, pan, onZoomChange: setZoom, onPanChange: setPan, sampleRate: audioContextRef.current?.sampleRate || 44100, useAudiogramScale }} />
         </>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <FFTViewer {...{ title: "Input Signal", color: "cyan", fftData: inputFFT, zoom, pan, onZoomChange: setZoom, onPanChange: setPan, sampleRate: audioContextRef.current?.sampleRate || 44100, useAudiogramScale }} />
           <FFTViewer {...{ title: "Output Signal", color: "magenta", fftData: outputFFT, zoom, pan, onZoomChange: setZoom, onPanChange: setPan, sampleRate: audioContextRef.current?.sampleRate || 44100, useAudiogramScale }} />
         </div>
@@ -585,12 +582,14 @@ const Equalizer = () => {
           </div>
         ) : (
           <div className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid gap-6" style={{ gridTemplateColumns: "480px 1fr" }}>
               <div>{mainControls}</div>
-              <div>{renderSignalViewers()}</div>
+              <div className="space-y-4">
+                {renderSignalViewers()}
+                {renderFFTViewers()}
+              </div>
             </div>
 
-            {renderFFTViewers()}
             {renderSpectrograms()}
           </div>
 
