@@ -309,11 +309,11 @@ const Equalizer = () => {
   };
 
   const handleLoadPreset = (preset: EqualizerPreset) => {
-  setFrequencyRanges(preset.ranges);
-  setSliderValues(preset.ranges.map(r => r.gain));
-  setProcessTrigger(prev => prev + 1);
-  toast.success(`Loaded: ${preset.name}`);
-};
+    setFrequencyRanges(preset.ranges);
+    setSliderValues(preset.ranges.map(r => r.gain));
+    setProcessTrigger(prev => prev + 1);
+    toast.success(`Loaded: ${preset.name}`);
+  };
 
   const handleMusicalVolumeChange = (id: string, volume: number) => {
     setMusicalSources((prev) =>
@@ -368,6 +368,7 @@ const Equalizer = () => {
   );
 
   const renderAudioSourceSeparation = (separationMode: "musical" | "human") => (
+  <div className="h-full flex flex-col">
     <AudioSourceSeparation
       mode={separationMode}
       sources={separationMode === "musical" ? musicalSources : humanSources}
@@ -380,54 +381,48 @@ const Equalizer = () => {
       playbackSpeed={playbackSpeed}
       onPlaybackSpeedChange={setPlaybackSpeed}
     />
-  );
+  </div>
+);
 
   let mainControls;
-  if (mode === "music" || mode === "voices") {
-    const separationMode = mode === "music" ? "musical" : "human";
-    mainControls = (
-      <Card className="p-6 bg-card border-border">
-        <Tabs value={subMode} onValueChange={(v) => setSubMode(v as "equalizer" | "ai")}>
-          <TabsList className="grid w-full grid-cols-2 mb-3">
-            <TabsTrigger value="equalizer">Equalizer Mode</TabsTrigger>
-            <TabsTrigger value="ai">AI Separation</TabsTrigger>
-          </TabsList>
-          <TabsContent value="equalizer">
-            {renderEqualizerHeader(false)}
-            {renderEqualizerControls()}
-          </TabsContent>
-          <TabsContent value="ai">
-            {renderAudioSourceSeparation(separationMode)}
-          </TabsContent>
-        </Tabs>
-      </Card>
-    );
-  } else if (config.isAI) {
-    const separationMode = mode === "ai-musical" ? "musical" : "human";
-    mainControls = (
-      <Card className="px-3 py-0 h-[300px] bg-card border-border">
-        <AudioSourceSeparation
-          mode={separationMode}
-          sources={separationMode === "musical" ? musicalSources : humanSources}
-          onVolumeChange={separationMode === "musical" ? handleMusicalVolumeChange : handleHumanVolumeChange}
-          onMuteToggle={separationMode === "musical" ? handleMusicalMuteToggle : handleHumanMuteToggle}
-          audioData={outputData}
-          audioContextRef={audioContextRef}
-          currentTime={currentTime}
-          onCurrentTimeChange={setCurrentTime}
-          playbackSpeed={playbackSpeed}
-          onPlaybackSpeedChange={setPlaybackSpeed}
-        />
-      </Card>
-    );
-  } else {
-    mainControls = (
-      <Card className="p-6 bg-card border-border">
-        {renderEqualizerHeader(config.isGeneric)}
-        {renderEqualizerControls()}
-      </Card>
-    );
-  }
+if (mode === "music" || mode === "voices") {
+  const separationMode = mode === "music" ? "musical" : "human";
+  mainControls = (
+    <Card className="p-6 bg-card border-border">
+      <Tabs value={subMode} onValueChange={(v) => setSubMode(v as "equalizer" | "ai")}>
+        <TabsList className="grid w-full grid-cols-2 mb-4">
+          <TabsTrigger value="equalizer">Equalizer Mode</TabsTrigger>
+          <TabsTrigger value="ai">AI Separation</TabsTrigger>
+        </TabsList>
+        <TabsContent value="equalizer" className="mt-4">
+          {renderEqualizerHeader(false)}
+          <div className="mt-4">{renderEqualizerControls()}</div>
+        </TabsContent>
+        <TabsContent value="ai" className="mt-2">
+  <div className="h-[480px] flex flex-col">
+    {renderAudioSourceSeparation(separationMode)}
+  </div>
+</TabsContent>
+      </Tabs>
+    </Card>
+  );
+} else if (config.isAI) {
+  const separationMode = mode === "ai-musical" ? "musical" : "human";
+  mainControls = (
+    <Card className="p-6 bg-card border-border h-[540px] flex flex-col">
+      <div className="flex-1 min-h-0">
+        {renderAudioSourceSeparation(separationMode)}
+      </div>
+    </Card>
+  );
+} else {
+  mainControls = (
+    <Card className="p-6 bg-card border-border">
+      {renderEqualizerHeader(config.isGeneric)}
+      <div className="mt-4">{renderEqualizerControls()}</div>
+    </Card>
+  );
+}
   const renderSignalViewers = () => (
     <div className="grid grid-cols-2 gap-4">
       <SignalViewer
@@ -464,53 +459,84 @@ const Equalizer = () => {
   );
 
   const renderFFTViewers = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Frequency Spectrum (FFT)</h2>
-        <div className="flex items-center gap-2">
-          <Switch checked={useAudiogramScale} onCheckedChange={setUseAudiogramScale} id="audiogram-scale" />
-          <Label htmlFor="audiogram-scale" className="text-sm cursor-pointer whitespace-nowrap">
-            Audiogram
-          </Label>
-        </div>
+  <div className="space-y-6">
+    <div className="flex items-center justify-between">
+      <h2 className="text-lg font-semibold">Frequency Spectrum (FFT)</h2>
+      <div className="flex items-center gap-2">
+        <Switch checked={useAudiogramScale} onCheckedChange={setUseAudiogramScale} id="audiogram-scale" />
+        <Label htmlFor="audiogram-scale" className="text-sm cursor-pointer whitespace-nowrap">
+          Audiogram Scale
+        </Label>
       </div>
-
-      {/** AI = stacked, Equalizer = side-by-side */}
-      {(config.isAI || (mode === "music" && subMode === "ai")) ? (
-        <>
-          <FFTViewer {...{ title: "Input Signal", color: "cyan", fftData: inputFFT, zoom, pan, onZoomChange: setZoom, onPanChange: setPan, sampleRate: audioContextRef.current?.sampleRate || 44100, useAudiogramScale }} />
-          <FFTViewer {...{ title: "Output Signal", color: "magenta", fftData: outputFFT, zoom, pan, onZoomChange: setZoom, onPanChange: setPan, sampleRate: audioContextRef.current?.sampleRate || 44100, useAudiogramScale }} />
-        </>
-      ) : (
-        <div className="grid grid-cols-2 gap-4">
-          <FFTViewer {...{ title: "Input Signal", color: "cyan", fftData: inputFFT, zoom, pan, onZoomChange: setZoom, onPanChange: setPan, sampleRate: audioContextRef.current?.sampleRate || 44100, useAudiogramScale }} />
-          <FFTViewer {...{ title: "Output Signal", color: "magenta", fftData: outputFFT, zoom, pan, onZoomChange: setZoom, onPanChange: setPan, sampleRate: audioContextRef.current?.sampleRate || 44100, useAudiogramScale }} />
-        </div>
-      )}
     </div>
-  );
+
+    <div className="grid grid-cols-2 gap-4">
+      <FFTViewer
+        title="Input FFT"
+        color="cyan"
+        fftData={inputFFT}
+        zoom={zoom}
+        pan={pan}
+        onZoomChange={setZoom}
+        onPanChange={setPan}
+        sampleRate={audioContextRef.current?.sampleRate || 44100}
+        useAudiogramScale={useAudiogramScale}
+      />
+      <FFTViewer
+        title="Output FFT"
+        color="magenta"
+        fftData={outputFFT}
+        zoom={zoom}
+        pan={pan}
+        onZoomChange={setZoom}
+        onPanChange={setPan}
+        sampleRate={audioContextRef.current?.sampleRate || 44100}
+        useAudiogramScale={useAudiogramScale}
+      />
+    </div>
+  </div>
+);
 
   const renderSpectrograms = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Spectrograms</h2>
-        <div className="flex items-center gap-2">
-          <Switch checked={showSpectrograms} onCheckedChange={setShowSpectrograms} id="show-spectrograms-global" />
-          <Label htmlFor="show-spectrograms-global" className="text-sm cursor-pointer">
-            Show Spectrograms
-          </Label>
-        </div>
+  <div className="space-y-6">
+    <div className="flex items-center justify-between">
+      <h2 className="text-lg font-semibold">Spectrograms</h2>
+      <div className="flex items-center gap-2">
+        <Switch checked={showSpectrograms} onCheckedChange={setShowSpectrograms} id="show-spectrograms-global" />
+        <Label htmlFor="show-spectrograms-global" className="text-sm cursor-pointer">
+          Show Spectrograms
+        </Label>
       </div>
-
-      {showSpectrograms && (
-        <div className={`${config.isAI || (mode === "music" && subMode === "ai") ? "space-y-6" : "grid grid-cols-1 lg:grid-cols-2 gap-4"
-          } animate-fade-in`}>
-          <Spectrogram title="Input Spectrogram" stftSlices={inputSlices} currentTime={currentTime} duration={audioData ? audioData.length / (audioContextRef.current?.sampleRate || 44100) : undefined} sampleRate={audioContextRef.current?.sampleRate} color="cyan" />
-          <Spectrogram title="Output Spectrogram" stftSlices={outputSlices} currentTime={currentTime} duration={outputData ? outputData.length / (audioContextRef.current?.sampleRate || 44100) : undefined} sampleRate={audioContextRef.current?.sampleRate} color="magenta" />
-        </div>
-      )}
     </div>
-  );
+
+    {showSpectrograms && (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+          <Spectrogram
+            title="Input Spectrogram"
+            stftSlices={inputSlices}
+            currentTime={currentTime}
+            duration={audioData ? audioData.length / (audioContextRef.current?.sampleRate || 44100) : undefined}
+            sampleRate={audioContextRef.current?.sampleRate}
+            color="cyan"
+            height={260}
+          />
+        
+        
+          <Spectrogram
+            title="Output Spectrogram"
+            stftSlices={outputSlices}
+            currentTime={currentTime}
+            duration={outputData ? outputData.length / (audioContextRef.current?.sampleRate || 44100) : undefined}
+            sampleRate={audioContextRef.current?.sampleRate}
+            color="magenta"
+            height={260}
+          />
+        
+      </div>
+    )}
+  </div>
+);
 
 
   return (
@@ -563,38 +589,25 @@ const Equalizer = () => {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-4">
-        {/* Conditional Layout: AI modes have graphs on right, equalizer mode has graphs below */}
-        {(config.isAI || (mode === "music" && subMode === "ai") || (mode === "voices" && subMode === "ai")) ? (
-          // AI Separation Mode: Side-by-side layout
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Left Column: Controls */}
-            <div className="flex flex-col">
-              {mainControls}
-            </div>
+      <main className="container mx-auto px-4 py-6">
+  <div className="space-y-10">
 
-            {/* Right Column: All Visualizations */}
-            <div className="flex flex-col gap-4">
-              {renderSignalViewers()}
-              {renderFFTViewers()}
-              {renderSpectrograms()}
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <div className="grid gap-6" style={{ gridTemplateColumns: "480px 1fr" }}>
-              <div>{mainControls}</div>
-              <div className="space-y-4">
-                {renderSignalViewers()}
-                {renderFFTViewers()}
-              </div>
-            </div>
+    {/* Fixed 480px Controls + Right Column */}
+    <div className="grid gap-8" style={{ gridTemplateColumns: "480px 1fr" }}>
+      <div className="space-y-4">
+        {mainControls}
+      </div>
 
-            {renderSpectrograms()}
-          </div>
+      <div className="space-y-8">
+        {renderSignalViewers()}
+        {renderFFTViewers()}
+      </div>
+    </div>
 
-        )}
-      </main>
+    {/* Full-width spectrograms below */}
+    {renderSpectrograms()}
+  </div>
+</main>
 
       {/* Dialogs */}
       <ModeSelectorDialog
@@ -614,11 +627,11 @@ const Equalizer = () => {
       )}
 
       <PresetManager
-  open={showPresetManager}
-  onOpenChange={setShowPresetManager}
-  currentRanges={frequencyRanges}
-  onLoad={handleLoadPreset}
-/>
+        open={showPresetManager}
+        onOpenChange={setShowPresetManager}
+        currentRanges={frequencyRanges}
+        onLoad={handleLoadPreset}
+      />
     </div>
   );
 };

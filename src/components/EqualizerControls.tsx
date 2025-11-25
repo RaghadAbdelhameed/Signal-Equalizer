@@ -304,10 +304,10 @@ const EqualizerControls = ({ labels, values, onChange, onRemove }: EqualizerCont
 
   return (
     <>
-      <div className="relative">
+      <div className="relative flex justify-center items-center">
         <canvas
           ref={canvasRef}
-          className="w-full h-[440px] cursor-pointer"
+          className="w-[500px] h-[380px] cursor-pointer"
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
