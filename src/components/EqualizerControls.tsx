@@ -26,6 +26,9 @@ const EqualizerControls = ({ labels, values, onChange, onRemove }: EqualizerCont
   const [removeDialogIndex, setRemoveDialogIndex] = useState<number | null>(null);
   const lastClickTimeRef = useRef<{ index: number; time: number } | null>(null);
 
+  const safeLabels = labels.length === values.length && labels.length > 0 ? labels : Array(Math.max(values.length, 1)).fill("Band");
+  const safeValues = values.length > 0 ? values : [1];
+
   // Convert value (0-2) to dB scale for display (-12 to +12)
   const valueToDb = (value: number) => (value - 1) * 12;
   const dbToValue = (db: number) => db / 12 + 1;
@@ -76,10 +79,10 @@ const EqualizerControls = ({ labels, values, onChange, onRemove }: EqualizerCont
 
     // Vertical grid lines (frequencies) - spanning full grid width
     const availableWidth = width - padding * 2;
-    const spacing = availableWidth / (labels.length - 1); // Evenly distribute across full width
+    const spacing = availableWidth / (safeLabels.length - 1); // Evenly distribute across full width
     const startX = padding; // Start at left edge of grid
     
-    for (let i = 0; i < labels.length; i++) {
+    for (let i = 0; i < safeValues.length; i++) {
       const x = startX + i * spacing;
       ctx.beginPath();
       ctx.moveTo(x, topPadding);
@@ -101,7 +104,7 @@ const EqualizerControls = ({ labels, values, onChange, onRemove }: EqualizerCont
 
     // Calculate curve points
     const points: { x: number; y: number }[] = [];
-    for (let i = 0; i < values.length; i++) {
+    for (let i = 0; i < safeValues.length; i++) {
       const x = startX + i * spacing;
       const normalizedValue = (2 - values[i]) / 2; // Invert: 2 -> 0, 0 -> 1
       const y = topPadding + normalizedValue * drawHeight;
@@ -187,17 +190,18 @@ const EqualizerControls = ({ labels, values, onChange, onRemove }: EqualizerCont
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
 
-    labels.forEach((label, index) => {
-      const x = startX + index * spacing;
-      ctx.fillText(label, x, height - bottomPadding + 10);
-      
-      // Show gain value
-      ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-      ctx.font = "10px Inter, sans-serif";
-      ctx.fillText(`${values[index].toFixed(2)}`, x, height - bottomPadding + 24);
-      ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
-      ctx.font = "11px Inter, sans-serif";
-    });
+    safeLabels.forEach((label, index) => {
+  const x = startX + index * spacing;
+  ctx.fillText(label || `Band ${index + 1}`, x, height - bottomPadding + 10);
+  
+  // Safe value display
+  const val = safeValues[index] ?? 1;
+  ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+  ctx.font = "10px Inter, sans-serif";
+  ctx.fillText(`${val.toFixed(2)}x`, x, height - bottomPadding + 24);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+  ctx.font = "11px Inter, sans-serif";
+});
   }, [values, labels, hoveredIndex, draggingIndex, valueToDb]);
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -210,7 +214,7 @@ const EqualizerControls = ({ labels, values, onChange, onRemove }: EqualizerCont
 
     const padding = 80;
     const availableWidth = rect.width - padding * 2;
-    const spacing = availableWidth / (labels.length - 1);
+    const spacing = availableWidth / Math.max(1, safeValues.length - 1);
     const startX = padding;
 
     // Find closest point
@@ -234,7 +238,7 @@ const EqualizerControls = ({ labels, values, onChange, onRemove }: EqualizerCont
       
       if (lastClick && lastClick.index === closestIndex && now - lastClick.time < 300) {
         // Double-click detected
-        if (onRemove && labels.length > 2) {
+        if (onRemove && safeLabels.length > 2) {
           setRemoveDialogIndex(closestIndex);
         }
         lastClickTimeRef.current = null;
@@ -266,7 +270,7 @@ const EqualizerControls = ({ labels, values, onChange, onRemove }: EqualizerCont
     const bottomPadding = 80;
     const drawHeight = rect.height - topPadding - bottomPadding;
     const availableWidth = rect.width - padding * 2;
-    const spacing = availableWidth / (labels.length - 1);
+    const spacing = availableWidth / (safeLabels.length - 1);
     const startX = padding;
 
     if (draggingIndex !== null) {
@@ -321,7 +325,7 @@ const EqualizerControls = ({ labels, values, onChange, onRemove }: EqualizerCont
             <AlertDialogTitle>Remove Frequency Point</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to remove the frequency point at{" "}
-              <strong>{removeDialogIndex !== null ? labels[removeDialogIndex] : ""}</strong>?
+              <strong>{removeDialogIndex !== null ? safeLabels[removeDialogIndex] || "Unknown" : ""}</strong>?
               This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>

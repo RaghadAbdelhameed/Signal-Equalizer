@@ -1,0 +1,31 @@
+{
+  "music": {
+    "title": "Musical Instruments",
+    "ranges": [
+      { "minFreq": 80,   "maxFreq": 300,   "gain": 1, "label": "Bass" },
+      { "minFreq": 300,  "maxFreq": 800,   "gain": 1, "label": "Piano" },
+      { "minFreq": 800,  "maxFreq": 3000,  "gain": 1, "label": "Vocals" },
+      { "minFreq": 3000, "maxFreq": 7000,  "gain": 1, "label": "Violin" }
+    ]
+  },
+  "animals": {
+    "title": "Animal Sounds",
+    "ranges": [
+      { "minFreq": 50,   "maxFreq": 1000,   "gain": 1, "label": "Lion" },
+      { "minFreq": 400,  "maxFreq": 4041,  "gain": 1, "label": "Elephant" },
+      { "minFreq": 1000, "maxFreq": 6100,  "gain": 1, "label": "Dog" },
+      { "minFreq": 4000, "maxFreq": 7000,  "gain": 1, "label": "Cockroach" }
+    ]
+  },
+  "voices": {
+    "title": "Human Voices",
+    "ranges": [
+      { "minFreq": 80,   "maxFreq": 250,   "gain": 1, "label": "Deep Male" },
+      { "minFreq": 250,  "maxFreq": 500,   "gain": 1, "label": "Male Voice" },
+      { "minFreq": 500,  "maxFreq": 1000,  "gain": 1, "label": "Female Low" },
+      { "minFreq": 1000, "maxFreq": 3000,  "gain": 1, "label": "Female High" },
+      { "minFreq": 3000, "maxFreq": 6000,  "gain": 1, "label": "Clarity" },
+      { "minFreq": 6000, "maxFreq": 12000, "gain": 1, "label": "Sibilance" }
+    ]
+  }
+}

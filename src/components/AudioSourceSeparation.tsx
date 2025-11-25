@@ -105,17 +105,17 @@ export const AudioSourceSeparation = ({
                     </Button>
 
                     <div className="flex items-center gap-3 w-60">
-  <span className="text-xs text-muted-foreground w-10">0%</span>
-  <Slider
-    value={[source.volume * 100]}
-    onValueChange={(v) => onVolumeChange(source.id, v[0] / 100)}
-    max={200}
-    step={1}
-    disabled={source.muted}
-    className="flex-1"
-  />
-  <span className="text-xs text-muted-foreground w-12 text-right">200%</span>
-</div>
+                      <span className="text-xs text-muted-foreground w-10">0%</span>
+                      <Slider
+                        value={[source.volume * 100]}
+                        onValueChange={(v) => onVolumeChange(source.id, v[0] / 100)}
+                        max={200}
+                        step={1}
+                        disabled={source.muted}
+                        className="flex-1"
+                      />
+                      <span className="text-xs text-muted-foreground w-12 text-right">200%</span>
+                    </div>
                   </div>
                 </div>
               </Card>
