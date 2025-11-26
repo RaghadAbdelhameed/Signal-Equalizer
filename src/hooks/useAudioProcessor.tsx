@@ -130,7 +130,6 @@ export const useAudioProcessor = (): AudioProcessorResult => {
     return { slices, maxMag };
   }, []);
 
-
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -165,20 +164,35 @@ export const useAudioProcessor = (): AudioProcessorResult => {
       setAudioData(channelData);
       setOutputData(channelData.slice());
 
-      const sampleRate = audioContextRef.current.sampleRate;
+      // SKIP HEAVY PROCESSING IN AI MODES
+      const isAIMode = window.location.pathname.includes('/equalizer/ai-');
+      console.log("🎯 AI Mode Check:", { 
+        pathname: window.location.pathname, 
+        isAIMode 
+      });
 
-      // Compute FFT and store both visualization data and complex FFT
-      const fftResult = computeFFT(channelData, sampleRate);
+      if (!isAIMode) {
+        const sampleRate = audioContextRef.current.sampleRate;
+        const fftResult = computeFFT(channelData, sampleRate);
+        setInputFFT(fftResult);
+        setOutputFFT(fftResult);
 
-      setInputFFT(fftResult);
-      setOutputFFT(fftResult);
+        const inputSTFT = computeSTFT(channelData);
+        setInputSlices(inputSTFT.slices);
+        setInputMaxMag(inputSTFT.maxMag);
+        setOutputSlices(inputSTFT.slices);
+        
+        console.log("🔬 Heavy processing applied (non-AI mode)");
+      } else {
+        console.log("🚫 Skipping heavy processing (AI mode)");
+        // Reset FFT and spectrogram data for AI modes
+        setInputFFT(null);
+        setOutputFFT(null);
+        setInputSlices([]);
+        setOutputSlices([]);
+      }
 
-      const inputSTFT = computeSTFT(channelData);
-      setInputSlices(inputSTFT.slices);
-      setInputMaxMag(inputSTFT.maxMag);
-      setOutputSlices(inputSTFT.slices);  // Initial output same as input
-
-      toast.success("Audio loaded (mono mix) – matches Librosa");
+      toast.success("Audio loaded successfully");
 
     } catch (error) {
       console.error("Error loading audio:", error);
@@ -239,7 +253,6 @@ export const useAudioProcessor = (): AudioProcessorResult => {
     console.log("✅ Processing complete - output data length:", outputArray.length);
   }, [audioData, computeSTFT, inputMaxMag]);
 
-
   const resetOutput = useCallback(() => {
     if (audioData && storedFFTData) {
       setOutputData(audioData.slice());
@@ -251,7 +264,7 @@ export const useAudioProcessor = (): AudioProcessorResult => {
   }, [audioData, computeSTFT, inputMaxMag]);
 
   /** Playback controls */
-const playAudio = useCallback(() => {
+  const playAudio = useCallback(() => {
     if (!outputData || !audioContextRef.current) return;
 
     // Stop previous

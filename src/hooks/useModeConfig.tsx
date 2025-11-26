@@ -16,6 +16,8 @@ interface ModeConfig {
 
 export const useModeConfig = (mode: string, frequencyRanges: FrequencyRange[]): ModeConfig => {
   return useMemo(() => {
+    console.log("🔄 useModeConfig called with mode:", mode);
+
     // Fixed modes – use labels from JSON
     if (["music", "animals", "voices"].includes(mode)) {
       const data = (modesData as any)[mode];
@@ -27,11 +29,18 @@ export const useModeConfig = (mode: string, frequencyRanges: FrequencyRange[]): 
       };
     }
 
-    // AI modes
-    if (mode === "ai-musical") return { title: "AI Musical Separation", sliders: [], isGeneric: false, isAI: true };
-    if (mode === "ai-human") return { title: "AI Speaker Separation", sliders: [], isGeneric: false, isAI: true };
+    // Check for AI modes
+    if (mode === "ai-musical" || mode === "ai-human") {
+      const title = mode === "ai-musical" ? "AI Music Separation" : "AI Speech Separation";
+      return {
+        title,
+        sliders: [],
+        isGeneric: false,
+        isAI: true,
+      };
+    }
 
-    // Generic mode – ONLY here we calculate frequency labels
+    // Generic mode – calculate frequency labels
     const formatFrequency = (freq: number) =>
       freq >= 1000 ? `${(freq / 1000).toFixed(1)}kHz` : `${freq}Hz`;
 
@@ -39,7 +48,7 @@ export const useModeConfig = (mode: string, frequencyRanges: FrequencyRange[]): 
       ? frequencyRanges.map(r =>
           formatFrequency(Math.round((r.minFreq + r.maxFreq) / 2))
         )
-      : []; // ← important: fallback when ranges are empty
+      : [];
 
     return {
       title: "Generic Mode",
@@ -47,5 +56,5 @@ export const useModeConfig = (mode: string, frequencyRanges: FrequencyRange[]): 
       isGeneric: true,
       isAI: false,
     };
-  }, [mode, frequencyRanges]); // ← frequencyRanges is a dependency
+  }, [mode, frequencyRanges]);
 };

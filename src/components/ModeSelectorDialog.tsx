@@ -6,7 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Card } from "@/components/ui/card";
-import { Music, Dog, Users, Sliders } from "lucide-react";
+import { Music, Dog, Users, Sliders, Cpu } from "lucide-react";
 
 interface ModeSelectorDialogProps {
   open: boolean;
@@ -50,9 +50,24 @@ const ModeSelectorDialog = ({
       icon: Users,
       color: "cyan",
     },
+    {
+      id: "ai-musical",
+      title: "AI Music Separation",
+      description: "AI-powered separation of musical instruments",
+      icon: Cpu,
+      color: "green",
+    },
+    {
+      id: "ai-human", 
+      title: "AI Speech Separation",
+      description: "AI-powered separation of human speakers",
+      icon: Cpu,
+      color: "blue",
+    },
   ];
 
   const handleSelectMode = (modeId: string) => {
+    console.log("🎯 Selected mode:", modeId);
     onSelectMode(modeId);
     onOpenChange(false);
   };
@@ -85,10 +100,12 @@ const ModeSelectorDialog = ({
                         ? "bg-primary/20"
                         : mode.color === "magenta"
                         ? "bg-secondary/20"
-                        : mode.color === "pink"
-                        ? "bg-pink-500/20"
-                        : mode.color === "teal"
-                        ? "bg-teal-500/20"
+                        : mode.color === "purple"
+                        ? "bg-purple-500/20"
+                        : mode.color === "green"
+                        ? "bg-green-500/20"
+                        : mode.color === "blue"
+                        ? "bg-blue-500/20"
                         : "bg-accent/20"
                     }`}
                   >
@@ -98,10 +115,12 @@ const ModeSelectorDialog = ({
                           ? "text-primary"
                           : mode.color === "magenta"
                           ? "text-secondary"
-                          : mode.color === "pink"
-                          ? "text-pink-500"
-                          : mode.color === "teal"
-                          ? "text-teal-500"
+                          : mode.color === "purple"
+                          ? "text-purple-500"
+                          : mode.color === "green"
+                          ? "text-green-500"
+                          : mode.color === "blue"
+                          ? "text-blue-500"
                           : "text-accent"
                       }`}
                     />
