@@ -383,6 +383,19 @@ export const AudioSourceSeparation = ({
     };
   }, []);
 
+  // Safe duration display function
+  const formatDuration = (duration: number | undefined | null): string => {
+    if (duration === undefined || duration === null || isNaN(duration)) {
+      return "0.00s";
+    }
+    return `${duration.toFixed(2)}s`;
+  };
+
+  // Safe current time display
+  const displayCurrentTime = typeof currentTime === 'number' && !isNaN(currentTime) 
+    ? currentTime.toFixed(2) 
+    : '0.00';
+
   return (
     <div className="h-full flex flex-col space-y-4">
       {/* Processing Controls */}
@@ -466,7 +479,7 @@ export const AudioSourceSeparation = ({
         </div>
 
         <div className="text-sm text-muted-foreground">
-          Current: {currentTime.toFixed(2)}s
+          Current: {displayCurrentTime}s
           {separatedTracks.length > 0 && (
             <span className="ml-4">
               {separatedTracks.filter(t => !t.error).length} tracks loaded
@@ -492,6 +505,8 @@ export const AudioSourceSeparation = ({
         ) : (
           separatedTracks.map((track) => {
             const audioBuffer = audioBuffersRef.current.get(track.id);
+            const duration = audioBuffer?.duration;
+            
             return (
               <Card key={track.id} className="p-3">
                 <div className="flex items-center justify-between mb-2">
@@ -506,7 +521,7 @@ export const AudioSourceSeparation = ({
                       </Label>
                       {audioBuffer && (
                         <p className="text-xs text-muted-foreground">
-                          {audioBuffer.duration.toFixed(2)}s
+                          {formatDuration(duration)}
                         </p>
                       )}
                       {track.error && (
