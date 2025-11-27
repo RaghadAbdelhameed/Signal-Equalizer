@@ -255,18 +255,16 @@ const Equalizer = () => {
   );
 
   const renderAudioSourceSeparation = (separationMode: "musical" | "human") => (
-    <div className="h-full flex flex-col">
-      <AudioSourceSeparation
-        mode={separationMode}
-        audioData={outputData}
-        audioContextRef={audioContextRef}
-        currentTime={currentTime}
-        onCurrentTimeChange={setCurrentTime}
-        playbackSpeed={playbackSpeed}
-        onPlaybackSpeedChange={setPlaybackSpeed}
-        audioFile={audioFile}
-      />
-    </div>
+    <AudioSourceSeparation
+      mode={separationMode}
+      audioData={outputData}
+      audioContextRef={audioContextRef}
+      currentTime={currentTime}
+      onCurrentTimeChange={setCurrentTime}
+      playbackSpeed={playbackSpeed}
+      onPlaybackSpeedChange={setPlaybackSpeed}
+      audioFile={audioFile}
+    />
   );
 
   // Check if we're in AI mode (either pure AI mode or AI tab)
@@ -280,8 +278,8 @@ const Equalizer = () => {
     const separationMode = mode === "ai-musical" ? "musical" : "human";
     
     mainControls = (
-      <Card className="p-6 bg-card border-border h-[540px] flex flex-col">
-        <div className="flex-1 min-h-0">
+      <Card className="p-6 bg-card border-border flex flex-col">
+        <div className="min-h-0">
           {renderAudioSourceSeparation(separationMode)}
         </div>
       </Card>
@@ -302,7 +300,7 @@ const Equalizer = () => {
             <div className="mt-4">{renderEqualizerControls()}</div>
           </TabsContent>
           <TabsContent value="ai" className="mt-2">
-            <div className="h-[480px] flex flex-col">
+            <div className="flex flex-col">
               {renderAudioSourceSeparation(separationMode)}
             </div>
           </TabsContent>
@@ -528,7 +526,7 @@ const Equalizer = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         <div className="space-y-10">
-          {/* Fixed 480px Controls + Right Column */}
+          {/* Dynamic Controls + Right Column */}
           <div className="grid gap-8" style={{ gridTemplateColumns: "480px 1fr" }}>
             <div className="space-y-4">
               {mainControls}

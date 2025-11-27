@@ -51,11 +51,14 @@ export const AudioSourceSeparation = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [currentJob, setCurrentJob] = useState<SeparationJob | null>(null);
+  const [duration, setDuration] = useState(0);
+  const [isSeeking, setIsSeeking] = useState(false);
 
   const sourceNodesRef = useRef<Map<string, SourceNode>>(new Map());
   const audioBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
   const startTimeRef = useRef<number>(0);
   const animationRef = useRef<number>();
+  const sliderRef = useRef<HTMLDivElement>(null);
 
   const handleSeparate = async () => {
     console.log("🔄 Starting separation process...");
@@ -68,6 +71,7 @@ export const AudioSourceSeparation = ({
     setIsProcessing(true);
     setProcessingProgress(0);
     setSeparatedTracks([]); // Clear previous tracks
+    setDuration(0); // Reset duration
     
     try {
       // Check backend health
@@ -202,6 +206,14 @@ export const AudioSourceSeparation = ({
     // Update state with all loaded tracks
     setSeparatedTracks(newTracks);
     
+    // Calculate maximum duration for seek slider
+    const validDurations = newTracks
+      .filter(track => track.audioBuffer && track.audioBuffer.duration > 0)
+      .map(track => track.audioBuffer!.duration);
+    
+    const maxDuration = validDurations.length > 0 ? Math.max(...validDurations) : 0;
+    setDuration(maxDuration);
+    
     const successfulTracks = newTracks.filter(track => !track.error);
     const failedTracks = newTracks.filter(track => track.error);
     
@@ -212,7 +224,7 @@ export const AudioSourceSeparation = ({
     }
   };
 
-  const playAllTracks = async () => {
+  const playAllTracks = async (seekTime?: number) => {
     if (!audioContextRef.current) {
       toast.error("Audio context not available");
       return;
@@ -233,10 +245,19 @@ export const AudioSourceSeparation = ({
       return;
     }
 
+    // Ensure seekTime is a valid finite number
+    const safeSeekTime = (seekTime !== undefined && Number.isFinite(seekTime)) 
+      ? Math.max(0, Math.min(seekTime, duration - 0.1)) // Clamp between 0 and duration
+      : (Number.isFinite(currentTime) ? Math.max(0, currentTime) : 0);
+
+    console.log("▶️ Starting playback at:", safeSeekTime, "duration:", duration);
+
+    startTimeRef.current = context.currentTime - safeSeekTime;
+    
     // Create audio nodes for each valid track
     validTracks.forEach(track => {
       const audioBuffer = audioBuffersRef.current.get(track.id);
-      if (audioBuffer) {
+      if (audioBuffer && audioBuffer.duration > 0) {
         const sourceNode = context.createBufferSource();
         const gainNode = context.createGain();
 
@@ -250,25 +271,24 @@ export const AudioSourceSeparation = ({
         sourceNode.playbackRate.value = playbackSpeed;
 
         sourceNodesRef.current.set(track.id, { source: sourceNode, gain: gainNode });
-      }
-    });
 
-    startTimeRef.current = context.currentTime - currentTime;
-    
-    // Start all tracks at the same time
-    sourceNodesRef.current.forEach(({ source }) => {
-      try {
-        source.start(0, Math.max(0, currentTime));
-      } catch (error) {
-        console.error("Error starting track:", error);
+        try {
+          // Ensure we don't seek beyond the buffer duration
+          const safeStartOffset = Math.min(safeSeekTime, audioBuffer.duration - 0.01);
+          sourceNode.start(0, safeStartOffset);
+          console.log(`🎵 Started track ${track.name} at offset:`, safeStartOffset);
+        } catch (error) {
+          console.error(`❌ Error starting track ${track.name}:`, error);
+        }
       }
     });
 
     setIsPlaying(true);
+    onCurrentTimeChange(safeSeekTime);
 
     // Update playback position
     const updateTime = () => {
-      if (!context) return;
+      if (!context || isSeeking) return;
 
       const elapsed = context.currentTime - startTimeRef.current;
       
@@ -276,7 +296,7 @@ export const AudioSourceSeparation = ({
       const anyTrackPlaying = Array.from(sourceNodesRef.current.values())
         .some(({ source }) => source.buffer && elapsed < source.buffer.duration);
 
-      if (!anyTrackPlaying) {
+      if (!anyTrackPlaying || elapsed >= duration) {
         stopAllTracks();
         onCurrentTimeChange(0);
       } else {
@@ -308,6 +328,54 @@ export const AudioSourceSeparation = ({
 
   const pauseAllTracks = () => {
     stopAllTracks();
+  };
+
+  // Custom click-to-seek handler
+  const handleSliderClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!sliderRef.current || duration <= 0) return;
+
+    const slider = sliderRef.current;
+    const rect = slider.getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    const percentage = clickX / rect.width;
+    const newTime = Math.max(0, Math.min(duration, percentage * duration));
+
+    console.log("🎯 Click seek to:", newTime, `(${percentage * 100}%)`);
+    
+    onCurrentTimeChange(newTime);
+    
+    if (isPlaying) {
+      // If playing, restart from new position
+      playAllTracks(newTime);
+    }
+  };
+
+  const handleSeek = (newTime: number) => {
+    // Ensure newTime is a valid finite number
+    const safeNewTime = Number.isFinite(newTime) 
+      ? Math.max(0, Math.min(newTime, duration))
+      : 0;
+    
+    console.log("⏩ Seeking to:", safeNewTime);
+    onCurrentTimeChange(safeNewTime);
+  };
+
+  const handleSeekEnd = (newTime: number) => {
+    // Ensure newTime is a valid finite number
+    const safeNewTime = Number.isFinite(newTime) 
+      ? Math.max(0, Math.min(newTime, duration))
+      : 0;
+    
+    console.log("⏩ Seek ended at:", safeNewTime);
+    setIsSeeking(false);
+    
+    if (isPlaying) {
+      // If was playing, restart from new position
+      playAllTracks(safeNewTime);
+    } else {
+      // If was paused, just update the time
+      onCurrentTimeChange(safeNewTime);
+    }
   };
 
   const handleTrackVolumeChange = (trackId: string, volume: number) => {
@@ -385,19 +453,20 @@ export const AudioSourceSeparation = ({
 
   // Safe duration display function
   const formatDuration = (duration: number | undefined | null): string => {
-    if (duration === undefined || duration === null || isNaN(duration)) {
-      return "0.00s";
+    if (duration === undefined || duration === null || !Number.isFinite(duration)) {
+      return "0:00";
     }
-    return `${duration.toFixed(2)}s`;
+    const minutes = Math.floor(duration / 60);
+    const seconds = Math.floor(duration % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
   // Safe current time display
-  const displayCurrentTime = typeof currentTime === 'number' && !isNaN(currentTime) 
-    ? currentTime.toFixed(2) 
-    : '0.00';
+  const displayCurrentTime = formatDuration(currentTime);
+  const displayTotalDuration = formatDuration(duration);
 
   return (
-    <div className="h-full flex flex-col space-y-4">
+    <div className="flex flex-col space-y-4">
       {/* Processing Controls */}
       <Card className="p-4">
         <div className="flex items-center justify-between mb-4">
@@ -447,7 +516,7 @@ export const AudioSourceSeparation = ({
         <div className="flex items-center space-x-2 mb-4">
           <Button
             size="sm"
-            onClick={isPlaying ? pauseAllTracks : playAllTracks}
+            onClick={isPlaying ? pauseAllTracks : () => playAllTracks()}
             disabled={separatedTracks.length === 0 || isProcessing}
           >
             {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
@@ -478,10 +547,33 @@ export const AudioSourceSeparation = ({
           </div>
         </div>
 
-        <div className="text-sm text-muted-foreground">
-          Current: {displayCurrentTime}s
+        {/* Seek Slider with custom click handler */}
+        {duration > 0 && (
+          <div className="space-y-2 mt-4">
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>{displayCurrentTime}</span>
+              <span>{displayTotalDuration}</span>
+            </div>
+            <div 
+              ref={sliderRef}
+              className="relative w-full cursor-pointer"
+              onClick={handleSliderClick}
+            >
+              <Slider
+                value={[Number.isFinite(currentTime) ? currentTime : 0]}
+                onValueChange={([value]) => handleSeek(value[0])}
+                onValueCommit={([value]) => handleSeekEnd(value[0])}
+                max={duration}
+                step={0.1}
+                className="w-full"
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="text-sm text-muted-foreground mt-2">
           {separatedTracks.length > 0 && (
-            <span className="ml-4">
+            <span>
               {separatedTracks.filter(t => !t.error).length} tracks loaded
               {separatedTracks.filter(t => t.error).length > 0 && 
                 `, ${separatedTracks.filter(t => t.error).length} failed`
@@ -491,8 +583,8 @@ export const AudioSourceSeparation = ({
         </div>
       </Card>
 
-      {/* Separated Tracks Controls */}
-      <div className="flex-1 overflow-y-auto space-y-3">
+      {/* Separated Tracks Controls - Dynamic height based on content */}
+      <div className="space-y-3">
         {separatedTracks.length === 0 ? (
           <Card className="p-6 text-center">
             <p className="text-muted-foreground">
@@ -503,74 +595,76 @@ export const AudioSourceSeparation = ({
             </p>
           </Card>
         ) : (
-          separatedTracks.map((track) => {
-            const audioBuffer = audioBuffersRef.current.get(track.id);
-            const duration = audioBuffer?.duration;
-            
-            return (
-              <Card key={track.id} className="p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center space-x-2">
-                    <div
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: track.color }}
-                    />
-                    <div>
-                      <Label htmlFor={`mute-${track.id}`} className="font-medium">
-                        {track.name}
-                      </Label>
-                      {audioBuffer && (
-                        <p className="text-xs text-muted-foreground">
-                          {formatDuration(duration)}
-                        </p>
-                      )}
-                      {track.error && (
-                        <p className="text-xs text-red-500 flex items-center">
-                          <AlertCircle className="h-3 w-3 mr-1" />
-                          {track.error}
-                        </p>
-                      )}
+          <div className="space-y-3">
+            {separatedTracks.map((track) => {
+              const audioBuffer = audioBuffersRef.current.get(track.id);
+              const trackDuration = audioBuffer?.duration;
+              
+              return (
+                <Card key={track.id} className="p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center space-x-2 flex-1 min-w-0">
+                      <div
+                        className="w-3 h-3 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: track.color }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <Label htmlFor={`mute-${track.id}`} className="font-medium truncate block">
+                          {track.name}
+                        </Label>
+                        {audioBuffer && (
+                          <p className="text-xs text-muted-foreground">
+                            {formatDuration(trackDuration)}
+                          </p>
+                        )}
+                        {track.error && (
+                          <p className="text-xs text-red-500 flex items-center">
+                            <AlertCircle className="h-3 w-3 mr-1 flex-shrink-0" />
+                            <span className="truncate">{track.error}</span>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2 flex-shrink-0 ml-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDownload(track)}
+                        disabled={!track.downloadUrl || !!track.error}
+                        title="Download"
+                      >
+                        <Download className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleTrackMuteToggle(track.id)}
+                        title={track.muted ? "Unmute" : "Mute"}
+                        disabled={!!track.error}
+                      >
+                        {track.muted ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
+                      </Button>
                     </div>
                   </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleDownload(track)}
-                      disabled={!track.downloadUrl || !!track.error}
-                      title="Download"
-                    >
-                      <Download className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleTrackMuteToggle(track.id)}
-                      title={track.muted ? "Unmute" : "Mute"}
-                      disabled={!!track.error}
-                    >
-                      {track.muted ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
-                    </Button>
-                  </div>
-                </div>
 
-                <div className="flex items-center space-x-3">
-                  <span className="text-xs text-muted-foreground w-8">
-                    {Math.round(track.volume * 100)}%
-                  </span>
-                  <Slider
-                    value={[track.volume]}
-                    onValueChange={([value]) => handleTrackVolumeChange(track.id, value)}
-                    max={1}
-                    step={0.01}
-                    className="flex-1"
-                    disabled={!audioBuffer || !!track.error}
-                  />
-                </div>
-              </Card>
-            );
-          })
+                  <div className="flex items-center space-x-3">
+                    <span className="text-xs text-muted-foreground w-8 flex-shrink-0">
+                      {Math.round(track.volume * 100)}%
+                    </span>
+                    <Slider
+                      value={[track.volume]}
+                      onValueChange={([value]) => handleTrackVolumeChange(track.id, value)}
+                      max={1}
+                      step={0.01}
+                      className="flex-1"
+                      disabled={!audioBuffer || !!track.error}
+                    />
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>
