@@ -11,6 +11,8 @@ This project implements a **web application** that loads an input signal, decomp
 
 ---
 
+![Main Page](src/assets/image.png)
+
 # 📖 Table of Contents
 
 - [Features](#-features)
@@ -47,7 +49,7 @@ This project implements a **web application** that loads an input signal, decomp
 - Linear and **Audiogram** frequency scale support.
 
 ---
-
+![Main Page](src/assets/change_mode.png)
 ## 🧩 System Architecture
 
 Signal Loader → Fourier Transform → Equalizer Engine → Inverse Transform
@@ -72,7 +74,10 @@ A fully customizable mode where the user builds their own equalizer by adding fr
 ### Validation
 
 A synthetic test signal composed of multiple pure tones is used to verify that frequency manipulation behaves correctly.
-
+<p align="center">
+  <img src="src/assets/add.png" alt="Image 1" width="500"/>
+  <img src="src/assets/add_range.png" alt="Image 2" width="500"/>
+</p>
 ## 2. Customized Modes
 
 Each mode contains **fixed sliders**, each representing **one sound source**, which may map to **multiple frequency windows**.
@@ -85,7 +90,7 @@ Control the magnitude of different **instruments** in a mixed track:
 - Guitar
 - Bass
 - Vocals
-
+![Main Page](src/assets/music.png)
 ### 🟩 Animal Sounds Mode
 
 Control the magnitude of different **animal sounds** in a mix:
@@ -111,6 +116,7 @@ Control different **people** in a multi-speaker mixture. Voices may differ by:
 - UI remains consistent across modes (labels & number of sliders change only).
 
 ---
+![Main Page](src/assets/presets.png)
 
 ## 📊 Signal Visualization
 
