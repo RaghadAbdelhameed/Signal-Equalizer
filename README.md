@@ -70,7 +70,7 @@ A fully customizable mode where the user builds their own equalizer by adding fr
   - Scale (0 → mute, 1 → unchanged, 2 → amplify)
 - Save created scheme as a preset file (JSON).
 - Load presets and regenerate the full UI automatically.
-
+![Main Page](src/assets/genric-speed-MadewithClipchamp-ezgif.com-video-to-gif-converter.gif)
 ### Validation
 
 A synthetic test signal composed of multiple pure tones is used to verify that frequency manipulation behaves correctly.
@@ -99,7 +99,7 @@ Control the magnitude of different **animal sounds** in a mix:
 - Cat
 - Bird
 - Horse
-
+![Main Page](src/assets/animals-speed-MadewithClipchamp-ezgif.com-video-to-gif-converter.gif)
 ### 🟦 Human Voices Mode
 
 Control different **people** in a multi-speaker mixture. Voices may differ by:
@@ -115,8 +115,8 @@ Control different **people** in a multi-speaker mixture. Voices may differ by:
 - Presets are externally editable.
 - UI remains consistent across modes (labels & number of sliders change only).
 
----
 ![Main Page](src/assets/presets.png)
+---
 
 ## 📊 Signal Visualization
 
@@ -174,11 +174,11 @@ Two pretrained models are provided for comparison.
 ### 1. Human Voice Separation AI Model
 
 Used to compare with **Human Voices Mode**.
-
+![Main Page](src/assets/humanai-speed-MadewithClipchamp-ezgif.com-video-to-gif-converter.gif)
 ### 2. Musical Instrument Separation AI Model
 
 Used to compare with **Musical Instruments Mode**.
-
+![Main Page](src/assets/musicai-speed-MadewithClipchamp-ezgif.com-video-to-gif-converter.gif)
 #### Comparison Metrics
 
 - Separation accuracy
