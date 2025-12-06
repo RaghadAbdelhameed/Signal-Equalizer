@@ -9,7 +9,6 @@ In biomedical engineering, equalization assists in **hearing-aid tuning**, **abn
 
 This project implements a **web application** that loads an input signal, decomposes it into frequencies, and allows users to manipulate the magnitude of selected frequency components through various modes. The processed signal is then reconstructed, visualized, and optionally played as audio.
 
----
 
 ![Main Page](src/assets/image.png)
 
@@ -48,7 +47,7 @@ This project implements a **web application** that loads an input signal, decomp
 - Synchronous time navigation between input and output viewers.
 - Linear and **Audiogram** frequency scale support.
 
----
+
 ![Main Page](src/assets/change_mode.png)
 ## 🧩 System Architecture
 
@@ -70,6 +69,7 @@ A fully customizable mode where the user builds their own equalizer by adding fr
   - Scale (0 → mute, 1 → unchanged, 2 → amplify)
 - Save created scheme as a preset file (JSON).
 - Load presets and regenerate the full UI automatically.
+
 ![Main Page](src/assets/genric-speed-MadewithClipchamp-ezgif.com-video-to-gif-converter.gif)
 ### Validation
 
@@ -78,6 +78,7 @@ A synthetic test signal composed of multiple pure tones is used to verify that f
   <img src="src/assets/add.png" alt="Image 1" width="500"/>
   <img src="src/assets/add_range.png" alt="Image 2" width="500"/>
 </p>
+
 ## 2. Customized Modes
 
 Each mode contains **fixed sliders**, each representing **one sound source**, which may map to **multiple frequency windows**.
@@ -87,9 +88,10 @@ Each mode contains **fixed sliders**, each representing **one sound source**, wh
 Control the magnitude of different **instruments** in a mixed track:
 
 - Piano
-- Guitar
+- Violin
 - Bass
 - Vocals
+
 ![Main Page](src/assets/music.png)
 ### 🟩 Animal Sounds Mode
 
@@ -99,6 +101,7 @@ Control the magnitude of different **animal sounds** in a mix:
 - Cat
 - Bird
 - Horse
+
 ![Main Page](src/assets/animals-speed-MadewithClipchamp-ezgif.com-video-to-gif-converter.gif)
 ### 🟦 Human Voices Mode
 
@@ -106,8 +109,10 @@ Control different **people** in a multi-speaker mixture. Voices may differ by:
 
 - Gender
 - Age
-- Language
+- Clarity
 - Timbre
+
+![Main Page](src/assets/human.png)
 
 ### Shared Features
 
@@ -116,7 +121,7 @@ Control different **people** in a multi-speaker mixture. Voices may differ by:
 - UI remains consistent across modes (labels & number of sliders change only).
 
 ![Main Page](src/assets/presets.png)
----
+
 
 ## 📊 Signal Visualization
 
@@ -135,11 +140,18 @@ Both include:
 - Boundary-aware scrolling
 - Perfect synchronization
 
-## 🎧 Audio Playback
 
-Any time-domain signal can be played as sound (if applicable).
+### 🔊 Audiogram Scale Support
 
----
+Frequency axis can switch between:
+
+- Linear frequency scale
+- **Audiogram scale** (hearing-perception based)
+
+Switching scales does **not** reset any settings.
+
+
+![Main Page](src/assets/graphs.png)
 
 ## 🌈 Spectrograms
 
@@ -154,18 +166,7 @@ Two spectrograms:
 - Real-time update on slider changes.
 - Show/hide toggle.
 
----
-
-## 🔊 Audiogram Scale Support
-
-Frequency axis can switch between:
-
-- Linear frequency scale
-- **Audiogram scale** (hearing-perception based)
-
-Switching scales does **not** reset any settings.
-
----
+![Main Page](src/assets/spectrogram.png)
 
 ## 🤖 AI Models
 
@@ -179,7 +180,7 @@ Used to compare with **Human Voices Mode**.
 
 Used to compare with **Musical Instruments Mode**.
 ![Main Page](src/assets/musicai-speed-MadewithClipchamp-ezgif.com-video-to-gif-converter.gif)
-#### Comparison Metrics
+### Comparison Metrics
 
 - Separation accuracy
 - Signal quality
